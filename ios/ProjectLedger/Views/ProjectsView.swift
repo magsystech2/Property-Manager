@@ -19,7 +19,6 @@ struct ProjectsView: View {
             Section {
                 NavigationLink(value: Route.vendors) { Label("Vendors and contractors", systemImage: "person.crop.rectangle.stack").frame(minHeight: 44) }
             }
-            Color.clear.frame(height: 60).listRowBackground(Color.clear)
         }
         .navigationTitle("Projects")
         .toolbar {
@@ -53,7 +52,6 @@ struct ProjectDetailView: View {
                 case .vendors: vendors(p)
                 case .documents: documents(p)
                 }
-                Color.clear.frame(height: 60).listRowBackground(Color.clear)
             }
             .navigationTitle(p.nickname)
             .toolbar {

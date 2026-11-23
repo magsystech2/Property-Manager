@@ -39,7 +39,6 @@ struct ActivityView: View {
             } footer: {
                 Text("Swipe left on a record, or touch and hold, to attach a receipt or payment confirmation.")
             }
-            Color.clear.frame(height: 60).listRowBackground(Color.clear)
         }
         .navigationTitle("Activity")
         .searchable(text: $filter.text, prompt: "Vendor, invoice #, amount, project…")

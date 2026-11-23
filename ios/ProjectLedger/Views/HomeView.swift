@@ -100,7 +100,6 @@ struct HomeView: View {
                     NavigationLink(value: Route.project(p.id)) { ProjectRow(project: p) }
                 }
             }
-            Color.clear.frame(height: 60).listRowBackground(Color.clear)   // room for the Add button
         }
         .navigationTitle(app.workspace?.name ?? "Home")
         .refreshable { await app.reload(); await app.syncPending() }

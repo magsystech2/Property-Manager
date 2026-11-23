@@ -339,12 +339,10 @@ struct AddButton: View {
                 .frame(width: 64, height: 64)
                 .background(Color.accentColor, in: Circle())
                 .shadow(radius: 4, y: 2)
-        } primaryAction: {
-            action = .scan
         }
         .accessibilityLabel("Add")
-        .accessibilityHint("Tap to scan a receipt. Touch and hold for more options.")
-        .padding(20)
+        .accessibilityHint("Opens Scan Receipt, Add Expense, Add Bill, Record Payment and Add Contribution.")
+        .padding(.horizontal, 20).padding(.vertical, 8)
     }
 }
 

@@ -27,7 +27,6 @@ struct PartnersView: View {
                 NavigationLink(value: Route.export(projectId: nil, partnerId: nil, vendorId: nil)) { Label("Export CSV", systemImage: "square.and.arrow.up").frame(minHeight: 44) }
                 NavigationLink(value: Route.settings) { Label("Settings, members and invites", systemImage: "gearshape").frame(minHeight: 44) }
             }
-            Color.clear.frame(height: 60).listRowBackground(Color.clear)
         }
         .navigationTitle("Partners")
         .refreshable { await app.reload() }
@@ -126,7 +125,6 @@ struct PartnerDetailView: View {
                 }
             }
             Section("All transactions") { EntryList(entries: entries, empty: "No personal payments, reimbursements or contributions yet.") }
-            Color.clear.frame(height: 60).listRowBackground(Color.clear)
         }
         .navigationTitle(b.member.displayName)
     }

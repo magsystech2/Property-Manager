@@ -178,13 +178,12 @@ struct TransactionForm: View {
 
             Color.clear.frame(height: 80).listRowBackground(Color.clear)
         }
-        .navigationTitle(draft.kind == .bill ? "Bill" : "Receipt")
+        .navigationTitle(isEditingDraft ? (draft.kind == .bill ? "Bill draft" : "Receipt draft") : (draft.kind == .bill ? "Add Bill" : "Add Expense"))
         .navigationBarTitleDisplayMode(.inline)
         .scrollDismissesKeyboard(.interactively)
         .safeAreaInset(edge: .bottom) { bottomBar }
         .toolbar {
             ToolbarItem(placement: .cancellationAction) { Button("Cancel") { cancel() } }
-            ToolbarItemGroup(placement: .keyboard) { Spacer(); Button("Done") { hideKeyboard() } }
         }
         .confirmationDialog("Keep this for later?", isPresented: $confirmCancel, titleVisibility: .visible) {
             Button("Save draft") { saveDraft() }
@@ -258,6 +257,11 @@ struct TransactionForm: View {
 
     var bottomBar: some View {
         HStack(spacing: 12) {
+            Button { hideKeyboard() } label: {
+                Image(systemName: "keyboard.chevron.compact.down").frame(minWidth: 44, minHeight: 54)
+            }
+            .buttonStyle(.bordered)
+            .accessibilityLabel("Hide keyboard")
             Button { saveDraft() } label: {
                 Label("Save draft", systemImage: "tray.and.arrow.down").frame(maxWidth: .infinity, minHeight: 54)
             }
@@ -288,6 +292,8 @@ struct TransactionForm: View {
             draft.payer = v == "me" ? .me : v == "llc" ? .llc : UUID(uuidString: v).map { .partner($0) } ?? .me
         })
     }
+
+    var isEditingDraft: Bool { app.allDrafts.contains { $0.id == draft.id } }
 
     func localURL(_ f: LocalFile) -> URL? { app.drafts?.url(f) }
 

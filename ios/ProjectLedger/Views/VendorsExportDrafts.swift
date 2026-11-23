@@ -75,7 +75,6 @@ struct VendorDetailView: View {
                 Section {
                     NavigationLink(value: Route.export(projectId: nil, partnerId: nil, vendorId: v.id)) { Label("Export CSV", systemImage: "square.and.arrow.up") }
                 }
-                Color.clear.frame(height: 60).listRowBackground(Color.clear)
             }
             .navigationTitle(v.name)
             .toolbar {

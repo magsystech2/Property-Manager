@@ -74,23 +74,40 @@ struct MainTabs: View {
             DemoBanner()
             TabView(selection: $tab) {
                 NavigationStack { HomeView().ledgerDestinations() }
+                    .addButtonInset()
                     .tabItem { Label("Home", systemImage: "house") }.tag(Tab.home)
                 NavigationStack { ProjectsView().ledgerDestinations() }
+                    .addButtonInset()
                     .tabItem { Label("Projects", systemImage: "building.2") }.tag(Tab.projects)
                 NavigationStack { ActivityView().ledgerDestinations() }
+                    .addButtonInset()
                     .tabItem { Label("Activity", systemImage: "list.bullet.rectangle") }.tag(Tab.activity)
                 NavigationStack { PartnersView().ledgerDestinations() }
+                    .addButtonInset()
                     .tabItem { Label("Partners", systemImage: "person.3") }.tag(Tab.partners)
-            }
-            .overlay(alignment: .bottomTrailing) {
-                AddButton(action: Binding(get: { nil }, set: { a in if let a { app.sheet = FormRoute(a) } }))
-                    .padding(.bottom, 44)
             }
         }
         .sheet(item: $app.sheet) { route in
             FormHost(route: route).environment(app)
         }
     }
+}
+
+/// Reserves a strip at the bottom for the Add button, so lists end above it instead of under it.
+struct AddButtonInset: ViewModifier {
+    @Environment(AppModel.self) private var app
+    func body(content: Content) -> some View {
+        content.safeAreaInset(edge: .bottom, spacing: 0) {
+            HStack {
+                Spacer()
+                AddButton(action: Binding(get: { nil }, set: { a in if let a { app.sheet = FormRoute(a) } }))
+            }
+        }
+    }
+}
+
+extension View {
+    func addButtonInset() -> some View { modifier(AddButtonInset()) }
 }
 
 // MARK: - Navigation
