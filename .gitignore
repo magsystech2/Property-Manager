@@ -1,2 +1,11 @@
 node_modules/
 .DS_Store
+
+# Xcode
+*.xcodeproj/
+ios/build/
+DerivedData/
+.build/
+xcuserdata/
+.swiftpm/
+supabase/.temp/

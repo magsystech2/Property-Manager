@@ -1,0 +1,126 @@
+import SwiftUI
+import LedgerCore
+
+@main
+struct ProjectLedgerApp: App {
+    @State private var app = AppModel()
+    @Environment(\.scenePhase) private var scenePhase
+
+    var body: some Scene {
+        WindowGroup {
+            RootView()
+                .environment(app)
+                .task { await app.launch() }
+                .onChange(of: scenePhase) { _, phase in
+                    if phase == .active, app.phase == .ready {
+                        Task { await app.reload(quiet: true); await app.syncPending() }
+                    }
+                }
+        }
+    }
+}
+
+struct RootView: View {
+    @Environment(AppModel.self) private var app
+
+    var body: some View {
+        @Bindable var app = app
+        Group {
+            switch app.phase {
+            case .launching: ProgressView("Loading…")
+            case .welcome: WelcomeView()
+            case .signIn: SignInView()
+            case .chooseWorkspace: ChooseWorkspaceView()
+            case .ready: MainTabs()
+            }
+        }
+        .overlay(alignment: .top) { ToastView() }
+        .alert("Couldn't do that", isPresented: Binding(get: { app.errorMessage != nil }, set: { if !$0 { app.errorMessage = nil } })) {
+            Button("OK", role: .cancel) { app.errorMessage = nil }
+        } message: {
+            Text(app.errorMessage ?? "")
+        }
+    }
+}
+
+struct ToastView: View {
+    @Environment(AppModel.self) private var app
+    var body: some View {
+        if let t = app.toast {
+            Label(t, systemImage: "checkmark.circle.fill")
+                .font(.callout.weight(.semibold))
+                .padding(.horizontal, 16).padding(.vertical, 10)
+                .background(.thinMaterial, in: Capsule())
+                .padding(.top, 8)
+                .transition(.move(edge: .top).combined(with: .opacity))
+                .task(id: t) {
+                    try? await Task.sleep(for: .seconds(2.5))
+                    withAnimation { app.toast = nil }
+                }
+                .accessibilityAddTraits(.updatesFrequently)
+        }
+    }
+}
+
+enum Tab: Hashable { case home, projects, activity, partners }
+
+struct MainTabs: View {
+    @Environment(AppModel.self) private var app
+    @State private var tab: Tab = .home
+
+    var body: some View {
+        @Bindable var app = app
+        VStack(spacing: 0) {
+            DemoBanner()
+            TabView(selection: $tab) {
+                NavigationStack { HomeView().ledgerDestinations() }
+                    .tabItem { Label("Home", systemImage: "house") }.tag(Tab.home)
+                NavigationStack { ProjectsView().ledgerDestinations() }
+                    .tabItem { Label("Projects", systemImage: "building.2") }.tag(Tab.projects)
+                NavigationStack { ActivityView().ledgerDestinations() }
+                    .tabItem { Label("Activity", systemImage: "list.bullet.rectangle") }.tag(Tab.activity)
+                NavigationStack { PartnersView().ledgerDestinations() }
+                    .tabItem { Label("Partners", systemImage: "person.3") }.tag(Tab.partners)
+            }
+            .overlay(alignment: .bottomTrailing) {
+                AddButton(action: Binding(get: { nil }, set: { a in if let a { app.sheet = FormRoute(a) } }))
+                    .padding(.bottom, 44)
+            }
+        }
+        .sheet(item: $app.sheet) { route in
+            FormHost(route: route).environment(app)
+        }
+    }
+}
+
+// MARK: - Navigation
+
+enum Route: Hashable {
+    case project(UUID)
+    case vendor(UUID)
+    case vendors
+    case partner(UUID)
+    case records(title: String, refs: [EntryRef], explanation: String?)
+    case drafts
+    case settings
+    case export(projectId: UUID?, partnerId: UUID?, vendorId: UUID?)
+}
+
+extension View {
+    func ledgerDestinations() -> some View {
+        self
+            .navigationDestination(for: EntryRef.self) { EntryDetailView(ref: $0) }
+            .navigationDestination(for: Route.self) { route in
+                switch route {
+                case .project(let id): ProjectDetailView(projectId: id)
+                case .vendor(let id): VendorDetailView(vendorId: id)
+                case .vendors: VendorsListView()
+                case .partner(let id): PartnerDetailView(userId: id)
+                case .records(let title, let refs, let explanation): RecordsView(title: title, refs: refs, explanation: explanation)
+                case .drafts: DraftsView()
+                case .settings: SettingsView()
+                case .export(let p, let partner, let v): ExportView(filter: CSVExport.Filter(projectId: p, partnerId: partner, vendorId: v))
+                }
+            }
+    }
+}
