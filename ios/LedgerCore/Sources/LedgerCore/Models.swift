@@ -40,10 +40,14 @@ public struct Member: Codable, Hashable, Identifiable, Sendable {
     public var role: String          // owner, partner
     public var displayName: String
     public var email: String?
+    /// Set when an owner removed this partner's access. They stay in the books (names, balances) but can't see the LLC.
+    public var accessRevokedAt: String?
     public var id: UUID { userId }
     public var isOwner: Bool { role == "owner" }
-    public init(workspaceId: UUID, userId: UUID, role: String, displayName: String, email: String? = nil) {
+    public var hasAccess: Bool { accessRevokedAt == nil }
+    public init(workspaceId: UUID, userId: UUID, role: String, displayName: String, email: String? = nil, accessRevokedAt: String? = nil) {
         self.workspaceId = workspaceId; self.userId = userId; self.role = role; self.displayName = displayName; self.email = email
+        self.accessRevokedAt = accessRevokedAt
     }
 }
 

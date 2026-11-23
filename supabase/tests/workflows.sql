@@ -160,6 +160,35 @@ update public.reimbursements set status = 'approved' where id = '40000000-0000-0
 update public.reimbursements set status = 'paid', paid_date = '2026-11-23', reference = 'Zelle 8812' where id = '40000000-0000-0000-0000-000000000002';
 select pg_temp.eq('Partner A fully reimbursed', (select owed_cents from public.v_partner_balances where user_id = :'A'), 0);
 
+\echo '== Owner removes and restores a partner''s access; history and balances stay'
+select pg_temp.login(:'B');
+update public.workspace_members set access_revoked_at = now() where user_id = :'C';  -- RLS: matches no row for a non-owner
+reset role;
+select pg_temp.eq('Partner B can''t remove C''s access', (select count(*) from public.workspace_members where user_id = :'C' and access_revoked_at is not null), 0);
+set role authenticated;
+select pg_temp.login(:'A');
+select pg_temp.must_fail(format($q$update public.workspace_members set access_revoked_at = now() where user_id = %L$q$, :'A'), 'change an owner');
+update public.workspace_members set access_revoked_at = now() where user_id = :'C';
+select pg_temp.eq('Revoked partner still listed with balances', (select count(*) from public.v_partner_balances), 3);
+select pg_temp.login(:'C');
+select pg_temp.eq('Revoked partner sees expenses', (select count(*) from public.expenses), 0);
+select pg_temp.eq('Revoked partner sees bills', (select count(*) from public.bills), 0);
+select pg_temp.eq('Revoked partner sees attachments', (select count(*) from public.attachments), 0);
+select pg_temp.eq('Revoked partner sees workspace', (select count(*) from public.workspaces w join t on w.id = t.ws), 0);
+select pg_temp.must_fail(format($q$insert into public.expenses (workspace_id, project_id, vendor_id, total_cents) values (%L, %L, %L, 100)$q$, ws, oak, home_depot), 'row-level security') from t;
+select pg_temp.must_fail(format($q$insert into storage.objects (bucket_id, name) values ('attachments', %L)$q$, ws::text || '/y.jpg'), 'row-level security') from t;
+do $$ begin  -- either refused or matches no visible row; both are fine
+  update public.workspace_members set access_revoked_at = null where user_id = auth.uid();
+exception when others then null; end $$;
+select pg_temp.eq('Revoked partner can''t restore themselves', (select count(*) from public.expenses), 0);
+select pg_temp.login(:'A');
+delete from public.workspace_members where user_id = :'C';
+select pg_temp.eq('Members can''t be deleted (no delete policy)', (select count(*) from public.workspace_members m join t on m.workspace_id = t.ws), 3);
+update public.workspace_members set access_revoked_at = null where user_id = :'C';
+select pg_temp.login(:'C');
+select pg_temp.eq('Restored partner sees expenses again', (select (count(*) > 0)::int from public.expenses), 1);
+select pg_temp.login(:'B');
+
 \echo '== Only an owner can change roles'
 select pg_temp.must_fail(format($q$update public.workspace_members set role = 'owner' where user_id = %L$q$, :'B'), 'owner');
 reset role;

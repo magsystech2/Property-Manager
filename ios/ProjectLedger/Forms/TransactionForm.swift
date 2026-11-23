@@ -16,14 +16,14 @@ enum FormRoute: Identifiable {
     case budget(UUID)
     case vendor(Vendor?)
 
-    init(_ a: AddAction) {
+    init(_ a: AddAction, projectId: UUID? = nil) {
         switch a {
         case .scan: self = .scan
         case .voice: self = .voice
-        case .expense: self = .transaction(TransactionDraft())
-        case .bill: var d = TransactionDraft(); d.kind = .bill; d.payer = .llc; self = .transaction(d)
+        case .expense: var d = TransactionDraft(); d.projectId = projectId; self = .transaction(d)
+        case .bill: var d = TransactionDraft(); d.kind = .bill; d.payer = .llc; d.projectId = projectId; self = .transaction(d)
         case .payment: self = .payment(billId: nil)
-        case .contribution: self = .contribution(projectId: nil)
+        case .contribution: self = .contribution(projectId: projectId)
         }
     }
 
@@ -130,7 +130,7 @@ struct TransactionForm: View {
                     Picker("Who paid", selection: payerBinding) {
                         Text("Me").tag("me")
                         Text("LLC account").tag("llc")
-                        ForEach(l.s.members.filter { $0.userId != app.me }) { Text($0.displayName).tag($0.userId.uuidString) }
+                        ForEach(l.s.members.filter { $0.userId != app.me && ($0.hasAccess || payerBinding.wrappedValue == $0.userId.uuidString) }) { Text($0.displayName).tag($0.userId.uuidString) }
                     }
                     .pickerStyle(.segmented)
                     MethodPicker(method: $draft.paymentMethod)

@@ -104,7 +104,7 @@ struct AddButtonInset: ViewModifier {
             .safeAreaInset(edge: .bottom, spacing: 0) {
             HStack {
                 Spacer()
-                AddButton(action: Binding(get: { nil }, set: { a in if let a { app.sheet = FormRoute(a) } }))
+                AddButton(action: Binding(get: { nil }, set: { a in if let a { app.sheet = FormRoute(a, projectId: app.currentProjectId) } }))
             }
         }
     }

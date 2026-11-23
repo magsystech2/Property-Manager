@@ -191,6 +191,22 @@ final class SupabaseBackend: LedgerBackend {
                 .eq("workspace_id", value: member.workspaceId.uuidString).eq("user_id", value: member.userId.uuidString).execute()
         }
     }
+    /// Encodes `access_revoked_at` even when nil, so restoring access writes an explicit null.
+    private struct AccessUpdate: Encodable {
+        let accessRevokedAt: Date?
+        enum CodingKeys: String, CodingKey { case accessRevokedAt }
+        func encode(to encoder: Encoder) throws {
+            var c = encoder.container(keyedBy: CodingKeys.self)
+            if let d = accessRevokedAt { try c.encode(ISO8601DateFormatter().string(from: d), forKey: .accessRevokedAt) }
+            else { try c.encodeNil(forKey: .accessRevokedAt) }
+        }
+    }
+    func setAccess(member: Member, revoked: Bool) async throws {
+        try await wrap {
+            try await self.client.from("workspace_members").update(AccessUpdate(accessRevokedAt: revoked ? Date() : nil))
+                .eq("workspace_id", value: member.workspaceId.uuidString).eq("user_id", value: member.userId.uuidString).execute()
+        }
+    }
     func invite(email: String, role: String, workspace: UUID) async throws {
         try await wrap {
             try await self.client.from("invites").insert(Invite(workspaceId: workspace, email: email.lowercased().trimmingCharacters(in: .whitespaces), role: role)).execute()

@@ -46,6 +46,8 @@ protocol LedgerBackend: AnyObject {
     func save(category: BudgetCategory) async throws
     func save(workspace: Workspace) async throws
     func save(member: Member) async throws
+    /// Owner only: remove (revoked = true) or restore a partner's access. Their records and balances stay.
+    func setAccess(member: Member, revoked: Bool) async throws
     func invite(email: String, role: String, workspace: UUID) async throws
     func cancelInvite(_ invite: Invite) async throws
 

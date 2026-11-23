@@ -23,6 +23,8 @@ final class AppModel {
     var draftsVersion = 0
     /// The form or capture screen currently shown as a sheet (any screen can open one).
     var sheet: FormRoute?
+    /// The project screen being viewed, so Add starts on that property (still changeable in the form).
+    var currentProjectId: UUID?
     private var liveTask: Task<Void, Never>?
 
     var isDemo: Bool { backend?.isDemo ?? false }
@@ -290,8 +292,23 @@ final class AppModel {
     // MARK: Attachments on existing records
 
     func attach(_ data: Data, filename: String, mimeType: String, to ref: EntryRef) async {
+        await attach(data, filename: filename, mimeType: mimeType, target: .record(ref))
+    }
+
+    /// Where a document gets filed: on a transaction, or directly on a project or vendor (permits, contracts, W-9s…).
+    enum AttachTarget: Hashable, Identifiable {
+        case record(EntryRef), project(UUID), vendor(UUID)
+        var id: Self { self }
+    }
+
+    func attach(_ data: Data, filename: String, mimeType: String, target: AttachTarget) async {
         guard let store = drafts, let file = try? store.store(data, filename: filename, mimeType: mimeType) else { return }
-        let p = DraftStore.PendingAttachment(ref: ref, file: file)
+        var p = DraftStore.PendingAttachment(ref: nil, file: file)
+        switch target {
+        case .record(let ref): p.ref = ref
+        case .project(let id): p.projectId = id
+        case .vendor(let id): p.vendorId = id
+        }
         store.addPending(p)
         draftsVersion += 1
         await pushAttachment(p)
@@ -303,7 +320,9 @@ final class AppModel {
             try await backend.upload(data, path: storagePath(ws, p.file), mimeType: p.file.mimeType)
             var a = Attachment(workspaceId: ws, storagePath: storagePath(ws, p.file), filename: p.file.filename,
                                mimeType: p.file.mimeType, sizeBytes: p.file.size, link: p.ref, clientId: p.file.id)
-            if p.ref.kind == .proceeds { a.projectId = snapshot?.proceeds.first { $0.id == p.ref.id }?.projectId }
+            if let ref = p.ref, ref.kind == .proceeds { a.projectId = snapshot?.proceeds.first { $0.id == ref.id }?.projectId }
+            if let id = p.projectId { a.projectId = id }
+            if let id = p.vendorId { a.vendorId = id }
             try await backend.add(attachment: a)
             store.removePending(p.id)
             draftsVersion += 1
@@ -318,6 +337,13 @@ final class AppModel {
     }
 
     func pending(for ref: EntryRef) -> [DraftStore.PendingAttachment] { pendingAttachments.filter { $0.ref == ref } }
+    func pending(for target: AttachTarget) -> [DraftStore.PendingAttachment] {
+        switch target {
+        case .record(let ref): pending(for: ref)
+        case .project(let id): pendingAttachments.filter { $0.projectId == id }
+        case .vendor(let id): pendingAttachments.filter { $0.vendorId == id }
+        }
+    }
 
     func fileURL(_ a: Attachment) async -> URL? {
         try? await backend?.fileURL(path: a.storagePath)
@@ -377,6 +403,14 @@ final class AppModel {
     func save(member: Member) async {
         guard let backend else { return }
         if await run({ try await backend.save(member: member) }) { await reload(quiet: true) }
+    }
+
+    func setAccess(member: Member, revoked: Bool) async {
+        guard let backend else { return }
+        if await run({ try await backend.setAccess(member: member, revoked: revoked) }) {
+            toast = revoked ? "\(member.displayName) can no longer see this LLC" : "\(member.displayName) has access again"
+            await reload(quiet: true)
+        }
     }
 
     func invite(email: String, role: String) async -> Bool {

@@ -81,9 +81,10 @@ struct PaymentForm: View {
             .sorted { ($0.dueDate ?? $0.billDate) < ($1.dueDate ?? $1.billDate) }
         let bal = billId.map { l.balance(bill: $0) }
         let cents = Money.parse(amount) ?? 0
+        let amountProblem = problem(cents: cents, balance: bal)
         let similar = billId.map { bid in l.payments(bill: bid).filter { !$0.isVoid && $0.amountCents == cents && Swift.abs(Days.daysBetween($0.paymentDate, date)) <= 3 } } ?? []
 
-        FormShell(title: "Record Payment", saveTitle: "Save payment", canSave: billId != nil && cents > 0, busy: busy, onSave: save) {
+        FormShell(title: "Record Payment", saveTitle: "Save payment", canSave: billId != nil && cents > 0 && amountProblem == nil, busy: busy, onSave: save) {
             Section {
                 Picker("Bill", selection: $billId) {
                     Text("Choose a bill…").tag(UUID?.none)
@@ -103,6 +104,10 @@ struct PaymentForm: View {
                 }
                 .pickerStyle(.segmented)
                 AmountField(label: "Amount", text: $amount, big: true)
+                if let amountProblem {
+                    Label(amountProblem, systemImage: "exclamationmark.triangle.fill")
+                        .font(.callout.weight(.semibold)).foregroundStyle(.red)
+                }
                 if let bal, kind == "payment" {
                     Button("Pay full balance \(Money.format(bal.outstandingCents))") { amount = Money.plain(bal.outstandingCents) }
                         .frame(minHeight: 44)
@@ -131,6 +136,17 @@ struct PaymentForm: View {
             FormFiles(files: $files)
         }
         .onAppear { if billId == nil, open.count == 1 { billId = open[0].id } }
+    }
+
+    /// Shown under the amount while it's invalid; disappears as soon as it's fixed.
+    func problem(cents: Cents, balance: BillBalance?) -> String? {
+        guard let balance, cents > 0 else { return nil }
+        switch kind {
+        case "refund":
+            return cents > balance.paidCents ? "A refund can't be more than the \(Money.format(balance.paidCents)) paid on this bill." : nil
+        default:
+            return cents > balance.outstandingCents ? "Only \(Money.format(balance.outstandingCents)) is still owed on this bill." : nil
+        }
     }
 
     func label(_ b: Bill) -> String {

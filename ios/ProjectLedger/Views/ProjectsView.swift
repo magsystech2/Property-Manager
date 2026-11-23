@@ -34,6 +34,7 @@ struct ProjectDetailView: View {
     let projectId: UUID
     enum Section_: String, CaseIterable { case overview = "Overview", budget = "Budget", transactions = "Activity", vendors = "Vendors", documents = "Files" }
     @State private var section: Section_ = .overview
+    @State private var addingDocument = false
 
     var body: some View {
         if let p = app.ledger.project(projectId) {
@@ -54,6 +55,9 @@ struct ProjectDetailView: View {
                 }
             }
             .navigationTitle(p.nickname)
+            .sheet(isPresented: $addingDocument) { AttachSheet(target: .project(p.id)) }
+            .onAppear { app.currentProjectId = projectId }
+            .onDisappear { if app.currentProjectId == projectId { app.currentProjectId = nil } }
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Menu {
@@ -214,8 +218,12 @@ struct ProjectDetailView: View {
         let refs = l.entries().filter { $0.projectId == p.id }.map(\.ref)
         let files = l.s.attachments.filter { a in a.projectId == p.id || refs.contains { l.attachments(for: $0).contains(a) } }
         Section {
-            if files.isEmpty { Text("No documents yet. Add them from a transaction.").foregroundStyle(.secondary) }
+            Button { addingDocument = true } label: { Label("Add project document", systemImage: "doc.badge.plus").frame(minHeight: 44) }
+            ForEach(app.pending(for: .project(p.id))) { f in PendingFileRow(file: f.file, message: f.errorMessage) }
+            if files.isEmpty { Text("No documents yet. Add one here, or attach it to a transaction.").foregroundStyle(.secondary) }
             ForEach(files) { a in AttachmentRow(attachment: a, showRecord: true) }
+        } footer: {
+            Text("Receipts and invoices attached to this project's transactions show here too.")
         }
     }
 }

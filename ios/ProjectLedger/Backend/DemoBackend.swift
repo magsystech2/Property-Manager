@@ -204,6 +204,15 @@ final class DemoBackend: LedgerBackend {
         if member.role != snapshot.members[i].role && me?.isOwner != true { throw LedgerError("Only an owner can change roles.") }
         snapshot.members[i] = member; changed()
     }
+    func setAccess(member: Member, revoked: Bool) async throws {
+        guard let i = snapshot.members.firstIndex(where: { $0.userId == member.userId }) else { return }
+        let me = snapshot.members.first { $0.userId == actingAs }
+        guard me?.isOwner == true, me?.hasAccess == true else { throw LedgerError("Only an owner can change who has access.") }
+        if revoked && (snapshot.members[i].isOwner || member.userId == actingAs) {
+            throw LedgerError("Change an owner to partner before removing their access.")
+        }
+        snapshot.members[i].accessRevokedAt = revoked ? now() : nil; changed()
+    }
     func invite(email: String, role: String, workspace: UUID) async throws {
         snapshot.invites.append(Invite(workspaceId: workspace, email: email.lowercased(), role: role)); changed()
     }
