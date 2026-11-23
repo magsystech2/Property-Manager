@@ -19,6 +19,7 @@ An iPhone app for a three-partner LLC that flips houses and builds new homes. It
 | `supabase/migrations/` | Postgres schema, rules (triggers), row-level security, the private file bucket, live updates |
 | `supabase/tests/` | The six spec workflows plus review, void, audit, access and concurrency tests |
 | `supabase/seed.sql` | Local sample data: three partners, one outsider, two properties |
+| `web/` | Web app (React) on the same Supabase backend, with Docker and Proxmox hosting files. See [`web/README.md`](web/README.md) |
 | `supabase/functions/parse-expense/` | Optional server-side reader for "Say it" (uses Claude). Without it, the app reads speech on the phone |
 
 Money is stored as integer cents everywhere.
@@ -57,6 +58,10 @@ To install on your own iPhone, set your Apple ID team under *Signing & Capabilit
 2. Owner: **Partners → Settings → Invite partners**. Enter each partner's email.
 3. Each partner installs the app, creates an account with that exact email, enters their name and taps **Join my invitation**.
 4. The owner can change roles, turn on **Require a second partner to approve**, and edit categories in the same screen.
+
+## Web app
+
+`web/` is the same ledger in a browser, for partners on a laptop or Android phone. It uses the same Supabase project, so data and access rules are shared with the iPhone app, and it has its own demo mode. To try it: `cd web && npm install && npm run dev`. To host it on Proxmox with private HTTPS through Tailscale, see [`web/README.md`](web/README.md).
 
 ## 4. Test the workflows
 

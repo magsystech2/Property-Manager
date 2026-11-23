@@ -1,0 +1,136 @@
+import { useEffect, useRef, useState } from 'react'
+import { BrowserRouter, NavLink, Route, Routes, Navigate, useLocation } from 'react-router-dom'
+import { useStore, store } from './store'
+import { newDraft } from './drafts'
+import { Icon } from './ui/common'
+import { Onboarding } from './pages/Onboarding'
+import { HomePage } from './pages/Home'
+import { ProjectsPage, ProjectDetailPage } from './pages/Projects'
+import { ActivityPage, RecordsPage } from './pages/Activity'
+import { PartnersPage, PartnerDetailPage } from './pages/Partners'
+import { VendorsPage, VendorDetailPage } from './pages/Vendors'
+import { EntryDetailPage } from './pages/EntryDetail'
+import { ExportPage } from './pages/Export'
+import { SettingsPage } from './pages/Settings'
+import { DraftsPage } from './pages/Drafts'
+import { ModalHost } from './forms/ModalHost'
+
+export default function App() {
+  const app = useStore()
+  useEffect(() => { store.launch() }, [])
+  return (
+    <BrowserRouter>
+      {app.phase === 'ready' ? <Shell /> : app.phase === 'launching' ? <div className="center-page muted">Loading…</div> : <Onboarding />}
+      {app.toast && <div className="toast" role="status">{app.toast}</div>}
+      {app.error && (
+        <div className="error-banner" role="alert">
+          <Icon name="alert" /><span style={{ flex: 1 }}>{app.error}</span>
+          <button className="btn link" onClick={() => { app.error = null; app.emit() }}>Dismiss</button>
+        </div>
+      )}
+    </BrowserRouter>
+  )
+}
+
+const addActions: { label: string; desc: string; icon: string; open: () => void }[] = [
+  { label: 'Add expense', desc: 'A receipt, already paid', icon: 'receipt', open: () => store.open({ type: 'transaction', draft: newDraft('receipt') }) },
+  { label: 'Add bill', desc: 'An invoice still owed', icon: 'doc', open: () => store.open({ type: 'transaction', draft: newDraft('bill') }) },
+  { label: 'Record payment', desc: 'Money paid on a bill', icon: 'cash', open: () => store.open({ type: 'payment' }) },
+  { label: 'Say it', desc: 'Speak or type a sentence', icon: 'mic', open: () => store.open({ type: 'voice' }) },
+  { label: 'Add contribution', desc: 'Capital a partner put in', icon: 'bank', open: () => store.open({ type: 'contribution', partnerId: store.me }) },
+  { label: 'Reimburse a partner', desc: 'Pay back personal spending', icon: 'users', open: () => store.open({ type: 'reimbursement' }) },
+  { label: 'Add commitment', desc: 'A contract or agreed quote', icon: 'sign', open: () => store.open({ type: 'commitment' }) },
+]
+
+function AddMenu({ mobile, onClose }: { mobile?: boolean; onClose: () => void }) {
+  const ref = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const h = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) onClose() }
+    setTimeout(() => window.addEventListener('mousedown', h))
+    return () => window.removeEventListener('mousedown', h)
+  }, [onClose])
+  return (
+    <div ref={ref} className={`card menu-list ${mobile ? 'mobile-add-menu' : 'add-menu'}`} role="menu">
+      {addActions.map((a) => (
+        <button key={a.label} role="menuitem" onClick={() => { onClose(); a.open() }}>
+          <Icon name={a.icon} /><span><div style={{ fontWeight: 600 }}>{a.label}</div><div className="desc">{a.desc}</div></span>
+        </button>
+      ))}
+    </div>
+  )
+}
+
+function Shell() {
+  const app = useStore()
+  const [menu, setMenu] = useState<'side' | 'tab' | null>(null)
+  const loc = useLocation()
+  useEffect(() => { window.scrollTo(0, 0) }, [loc.pathname])
+  const nav = [
+    { to: '/', label: 'Home', icon: 'home', end: true },
+    { to: '/projects', label: 'Projects', icon: 'folder' },
+    { to: '/activity', label: 'Activity', icon: 'list' },
+    { to: '/partners', label: 'Partners', icon: 'users' },
+  ]
+  const demo = app.demo
+  return (
+    <div className="app">
+      <aside className="sidebar">
+        <div className="brand">Project Ledger</div>
+        <div className="brand-sub">{app.workspace?.name}</div>
+        <div style={{ position: 'relative', marginBottom: 10 }}>
+          <button className="btn primary" style={{ width: '100%' }} onClick={() => setMenu(menu ? null : 'side')}><Icon name="plus" />Add</button>
+          {menu === 'side' && <AddMenu onClose={() => setMenu(null)} />}
+        </div>
+        {nav.map((n) => <NavLink key={n.to} to={n.to} end={n.end} className="nav-link"><Icon name={n.icon} />{n.label}</NavLink>)}
+        <NavLink to="/vendors" className="nav-link"><Icon name="store" />Vendors</NavLink>
+        <NavLink to="/export" className="nav-link"><Icon name="download" />Export CSV</NavLink>
+        {app.draftList.length > 0 && <NavLink to="/drafts" className="nav-link"><Icon name="tray" />Drafts ({app.draftList.length})</NavLink>}
+        <span className="spacer" />
+        <NavLink to="/settings" className="nav-link"><Icon name="settings" />Settings</NavLink>
+        <div className="small muted" style={{ padding: '6px 10px' }}>
+          {app.isDemo ? 'Demo, this browser only' : `Signed in as ${app.myMember?.display_name ?? app.backend?.userEmail() ?? ''}`}
+        </div>
+      </aside>
+      <div className="main">
+        {demo && (
+          <div className="demo-bar">
+            <strong>DEMO MODE</strong>
+            <span>Sample data in this browser only. Acting as</span>
+            <select value={app.me ?? ''} onChange={(e) => app.actAs(e.target.value)} aria-label="Act as partner">
+              {app.ledger.s.members.map((m) => <option key={m.user_id} value={m.user_id}>{m.display_name}</option>)}
+            </select>
+            <button onClick={() => app.resetDemo()}>Reset sample data</button>
+            <button onClick={() => app.signOut()}>Exit demo</button>
+          </div>
+        )}
+        <main className="content">
+          <Routes>
+            <Route path="/" element={<HomePage />} />
+            <Route path="/projects" element={<ProjectsPage />} />
+            <Route path="/projects/:id" element={<ProjectDetailPage />} />
+            <Route path="/activity" element={<ActivityPage />} />
+            <Route path="/records" element={<RecordsPage />} />
+            <Route path="/records/:kind/:id" element={<EntryDetailPage />} />
+            <Route path="/partners" element={<PartnersPage />} />
+            <Route path="/partners/:id" element={<PartnerDetailPage />} />
+            <Route path="/vendors" element={<VendorsPage />} />
+            <Route path="/vendors/:id" element={<VendorDetailPage />} />
+            <Route path="/export" element={<ExportPage />} />
+            <Route path="/settings" element={<SettingsPage />} />
+            <Route path="/drafts" element={<DraftsPage />} />
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </main>
+      </div>
+      <nav className="tabbar" aria-label="Main">
+        <NavLink to="/" end><Icon name="home" />Home</NavLink>
+        <NavLink to="/projects"><Icon name="folder" />Projects</NavLink>
+        <button className="add-tab" onClick={() => setMenu(menu ? null : 'tab')} aria-label="Add"><span className="circle"><Icon name="plus" size={22} /></span>Add</button>
+        <NavLink to="/activity"><Icon name="list" />Activity</NavLink>
+        <NavLink to="/partners"><Icon name="users" />Partners</NavLink>
+      </nav>
+      {menu === 'tab' && <AddMenu mobile onClose={() => setMenu(null)} />}
+      <ModalHost />
+    </div>
+  )
+}
