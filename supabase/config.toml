@@ -1,0 +1,13 @@
+# Minimal Supabase CLI config for local development (`supabase start`).
+project_id = "project-ledger"
+
+[auth]
+site_url = "projectledger://auth-callback"
+additional_redirect_urls = ["projectledger://auth-callback"]
+
+[auth.email]
+enable_signup = true
+enable_confirmations = false
+
+[functions.parse-expense]
+verify_jwt = true
