@@ -64,7 +64,7 @@ struct ScanFlow: View {
                 d.kind = .bill
                 d.payer = .llc
             }
-            if let vid = d.vendorId { d.projectId = lastProject(for: vid) }
+            d.projectId = app.currentProjectId ?? d.vendorId.flatMap { lastProject(for: $0) }
             stage = .review(d, text)
         }
     }
@@ -134,6 +134,7 @@ struct VoiceFlow: View {
         Task {
             let s = await app.readVoice(text)
             var d = TransactionDraft()
+            d.projectId = app.currentProjectId     // a project named out loud still wins
             d.source = "voice"
             d.transcript = text
             d.apply(s, vendors: app.ledger.s.vendors, me: app.me)

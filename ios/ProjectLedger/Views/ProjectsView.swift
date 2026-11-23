@@ -54,6 +54,8 @@ struct ProjectDetailView: View {
                 }
             }
             .navigationTitle(p.nickname)
+            .onAppear { app.currentProjectId = projectId }
+            .onDisappear { if app.currentProjectId == projectId { app.currentProjectId = nil } }
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Menu {

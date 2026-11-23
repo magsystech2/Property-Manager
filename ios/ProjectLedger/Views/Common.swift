@@ -74,12 +74,29 @@ struct EntryRow: View {
             }
             Spacer(minLength: 8)
             VStack(alignment: .trailing, spacing: 4) {
-                MoneyText(cents: entry.amountCents, font: .body.weight(.semibold))
+                if let bal = openBillBalance {
+                    // Unpaid or partly paid bill: what's still due leads; total and paid sit underneath.
+                    MoneyText(cents: bal.outstandingCents, font: .body.weight(.semibold))
+                    Text("due").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                    if bal.outstandingCents != bal.totalCents {
+                        Text("of \(Money.format(bal.totalCents)) · \(Money.format(bal.paidCents)) paid")
+                            .font(.caption2.monospacedDigit()).foregroundStyle(.secondary)
+                    }
+                } else {
+                    MoneyText(cents: entry.amountCents, font: .body.weight(.semibold))
+                }
                 Text(Days.display(entry.date)).font(.caption).foregroundStyle(.secondary)
             }
         }
         .padding(.vertical, 4)
         .accessibilityElement(children: .combine)
+    }
+
+    /// Balance of a posted bill that still has money owed; nil for anything else.
+    var openBillBalance: BillBalance? {
+        guard entry.ref.kind == .bill, entry.status.text != "Void" else { return nil }
+        let bal = app.ledger.balance(bill: entry.id)
+        return bal.outstandingCents > 0 ? bal : nil
     }
 
     var icon: String {

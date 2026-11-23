@@ -23,6 +23,8 @@ final class AppModel {
     var draftsVersion = 0
     /// The form or capture screen currently shown as a sheet (any screen can open one).
     var sheet: FormRoute?
+    /// The project screen being viewed, so Add starts on that property (still changeable in the form).
+    var currentProjectId: UUID?
     private var liveTask: Task<Void, Never>?
 
     var isDemo: Bool { backend?.isDemo ?? false }

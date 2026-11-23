@@ -16,14 +16,14 @@ enum FormRoute: Identifiable {
     case budget(UUID)
     case vendor(Vendor?)
 
-    init(_ a: AddAction) {
+    init(_ a: AddAction, projectId: UUID? = nil) {
         switch a {
         case .scan: self = .scan
         case .voice: self = .voice
-        case .expense: self = .transaction(TransactionDraft())
-        case .bill: var d = TransactionDraft(); d.kind = .bill; d.payer = .llc; self = .transaction(d)
+        case .expense: var d = TransactionDraft(); d.projectId = projectId; self = .transaction(d)
+        case .bill: var d = TransactionDraft(); d.kind = .bill; d.payer = .llc; d.projectId = projectId; self = .transaction(d)
         case .payment: self = .payment(billId: nil)
-        case .contribution: self = .contribution(projectId: nil)
+        case .contribution: self = .contribution(projectId: projectId)
         }
     }
 
