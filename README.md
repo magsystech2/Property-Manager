@@ -41,7 +41,7 @@ To install on your own iPhone, set your Apple ID team under *Signing & Capabilit
 
 1. Create a free project at [supabase.com](https://supabase.com).
 2. Apply the database. Either:
-   - **SQL editor:** paste and run each file in `supabase/migrations/` in order (`…01_schema`, `…02_rules`, `…03_storage_realtime`), or
+   - **SQL editor:** paste and run each file in `supabase/migrations/` in order (`…01_schema`, `…02_rules`, `…03_storage_realtime`, `…04_member_access`), or
    - **CLI:** `supabase link --project-ref <ref>` and then `supabase db push`.
    Don't run `seed.sql` on the hosted project. It's for local testing only.
 3. **Authentication → Providers → Email:** keep it on. For a three-person team you can turn off "Confirm email", or leave it on and have each partner confirm by email first.
@@ -57,6 +57,7 @@ To install on your own iPhone, set your Apple ID team under *Signing & Capabilit
 2. Owner: **Partners → Settings → Invite partners**. Enter each partner's email.
 3. Each partner installs the app, creates an account with that exact email, enters their name and taps **Join my invitation**.
 4. The owner can change roles, turn on **Require a second partner to approve**, and edit categories in the same screen.
+5. To take away a partner's access (say a partner leaves), the owner taps that partner's role → **Remove access…**. The database stops them seeing or adding any record or file right away. Their past entries and balances stay, so the LLC still shows what it owes them. **Restore** gives access back.
 
 ## 4. Test the workflows
 
@@ -85,4 +86,5 @@ supabase/tests/concurrency.sh          # two partners pay the same $1,000 bill a
 - Payments are recorded after they happen outside the app. No bank connections, and no money moves.
 - Receipts and bills entered offline are kept on the phone and marked "Waiting to sync" until they upload. Other records (payments, reimbursements) need a connection when you save them.
 - Each list loads up to 1,000 rows per table. That's plenty for an MVP. Add paging before it grows past that.
+- Project documents that aren't one transaction (permits, plans, closing papers) go on the project's **Files** tab. Vendor documents (contracts, W-9s, insurance certificates) go on the vendor's page. Neither changes any totals.
 - Profit splits, distributions and tax accounting are not included.

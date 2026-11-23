@@ -38,6 +38,7 @@ struct VendorsListView: View {
 struct VendorDetailView: View {
     @Environment(AppModel.self) private var app
     let vendorId: UUID
+    @State private var addingDocument = false
 
     var body: some View {
         let l = app.ledger
@@ -69,6 +70,8 @@ struct VendorDetailView: View {
                 }
                 Section("Bills, payments and receipts") { EntryList(entries: sum.entries, empty: "No transactions yet.") }
                 Section("Files") {
+                    Button { addingDocument = true } label: { Label("Add vendor document", systemImage: "doc.badge.plus").frame(minHeight: 44) }
+                    ForEach(app.pending(for: .vendor(v.id))) { f in PendingFileRow(file: f.file, message: f.errorMessage) }
                     if sum.attachments.isEmpty { Text("No documents yet.").foregroundStyle(.secondary) }
                     ForEach(sum.attachments) { AttachmentRow(attachment: $0, showRecord: true) }
                 }
@@ -77,6 +80,7 @@ struct VendorDetailView: View {
                 }
             }
             .navigationTitle(v.name)
+            .sheet(isPresented: $addingDocument) { AttachSheet(target: .vendor(v.id)) }
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) { Button("Edit") { app.sheet = .vendor(v) } }
             }

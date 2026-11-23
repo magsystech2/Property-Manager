@@ -87,20 +87,32 @@ struct CaptureButtons: View {
 struct AttachSheet: View {
     @Environment(AppModel.self) private var app
     @Environment(\.dismiss) private var dismiss
-    let ref: EntryRef
+    let target: AppModel.AttachTarget
+
+    init(ref: EntryRef) { target = .record(ref) }
+    init(target: AppModel.AttachTarget) { self.target = target }
 
     var body: some View {
         NavigationStack {
             VStack(alignment: .leading, spacing: 16) {
-                if let e = app.ledger.entry(ref) {
-                    EntryRow(entry: e)
-                        .padding().background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12))
+                switch target {
+                case .record(let ref):
+                    if let e = app.ledger.entry(ref) {
+                        EntryRow(entry: e)
+                            .padding().background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12))
+                    }
+                    Text("The document is added to this record for everyone. Amounts and balances stay the same.")
+                        .font(.callout).foregroundStyle(.secondary)
+                case .project(let id):
+                    Text("Filed on \(app.ledger.project(id)?.nickname ?? "this project") for everyone: permits, plans, closing papers and other documents that aren't a single transaction. Totals don't change.")
+                        .font(.callout).foregroundStyle(.secondary)
+                case .vendor(let id):
+                    Text("Filed on \(app.ledger.vendor(id)?.name ?? "this vendor") for everyone: contracts, W-9s, licenses and insurance certificates. Totals don't change.")
+                        .font(.callout).foregroundStyle(.secondary)
                 }
-                Text("The document is added to this record for everyone. Amounts and balances stay the same.")
-                    .font(.callout).foregroundStyle(.secondary)
                 CaptureButtons(scanTitle: "Scan document") { files in
                     Task {
-                        for f in files { await app.attach(f.data, filename: f.filename, mimeType: f.mimeType, to: ref) }
+                        for f in files { await app.attach(f.data, filename: f.filename, mimeType: f.mimeType, target: target) }
                     }
                     dismiss()
                 }

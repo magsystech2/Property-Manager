@@ -100,8 +100,11 @@ struct TransactionDraft: Codable, Identifiable, Hashable {
 final class DraftStore {
     struct PendingAttachment: Codable, Identifiable, Hashable {
         var id = UUID()
-        var ref: EntryRef
+        /// The record the document belongs to; nil for a document filed on a project or vendor itself.
+        var ref: EntryRef?
         var file: LocalFile
+        var projectId: UUID? = nil
+        var vendorId: UUID? = nil
         var errorMessage: String?
     }
 

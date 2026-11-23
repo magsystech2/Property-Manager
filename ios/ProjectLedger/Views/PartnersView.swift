@@ -46,6 +46,9 @@ struct PartnerCard: View {
             HStack {
                 Text(balance.member.userId == app.me ? "\(balance.member.displayName) (me)" : balance.member.displayName).font(.headline)
                 if balance.member.isOwner { Text("Owner").font(.caption).padding(.horizontal, 6).background(.quaternary, in: Capsule()) }
+                if !balance.member.hasAccess {
+                    Label("No access", systemImage: "lock.fill").font(.caption.weight(.semibold)).foregroundStyle(.red)
+                }
                 Spacer()
             }
             HStack(alignment: .firstTextBaseline) {
@@ -140,6 +143,7 @@ struct SettingsView: View {
     @State private var myName = ""
     @State private var showLiveSetup = false
     @State private var confirmSignOut = false
+    @State private var removing: Member?
 
     var body: some View {
         let s = app.ledger.s
@@ -168,24 +172,44 @@ struct SettingsView: View {
                 Text("When on, new bills, change orders and reimbursement requests wait until a different partner approves them. Only the owner can change this.")
             }
 
-            Section("Members") {
+            Section {
                 ForEach(s.members) { m in
                     HStack {
                         VStack(alignment: .leading) {
                             Text(m.displayName)
                             if let e = m.email { Text(e).font(.caption).foregroundStyle(.secondary) }
+                            if !m.hasAccess {
+                                Label("Access removed", systemImage: "lock.fill").font(.caption.weight(.semibold)).foregroundStyle(.red)
+                            }
                         }
                         Spacer()
-                        if app.isOwner && m.userId != app.me {
-                            Picker("Role", selection: Binding(get: { m.role }, set: { r in var x = m; x.role = r; Task { await app.save(member: x) } })) {
-                                Text("Owner").tag("owner"); Text("Partner").tag("partner")
+                        if !m.hasAccess {
+                            if app.isOwner {
+                                Button("Restore") { Task { await app.setAccess(member: m, revoked: false) } }
                             }
-                            .labelsHidden()
+                        } else if app.isOwner && m.userId != app.me {
+                            Menu {
+                                Picker("Role", selection: Binding(get: { m.role }, set: { r in var x = m; x.role = r; Task { await app.save(member: x) } })) {
+                                    Text("Owner").tag("owner"); Text("Partner").tag("partner")
+                                }
+                                if !m.isOwner {
+                                    Divider()
+                                    Button(role: .destructive) { removing = m } label: { Label("Remove access…", systemImage: "lock") }
+                                }
+                            } label: {
+                                HStack(spacing: 4) { Text(m.isOwner ? "Owner" : "Partner"); Image(systemName: "chevron.up.chevron.down").font(.caption) }
+                                    .frame(minHeight: 44)
+                            }
+                            .accessibilityLabel("Role and access for \(m.displayName)")
                         } else {
                             Text(m.isOwner ? "Owner" : "Partner").foregroundStyle(.secondary)
                         }
                     }
                     .frame(minHeight: 44)
+                }
+            } header: { Text("Members") } footer: {
+                if app.isOwner {
+                    Text("Tap a partner's role to change it or remove their access. A partner without access keeps their place in the books (what they paid, what the LLC owes them) but can no longer see or add anything. You can restore access later.")
                 }
             }
 
@@ -249,6 +273,12 @@ struct SettingsView: View {
                     app.chooseLive()
                 }
             }
+        }
+        .confirmationDialog("Remove \(removing?.displayName ?? "")'s access?", isPresented: Binding(get: { removing != nil }, set: { if !$0 { removing = nil } }),
+                            titleVisibility: .visible, presenting: removing) { m in
+            Button("Remove access", role: .destructive) { Task { await app.setAccess(member: m, revoked: true) } }
+        } message: { _ in
+            Text("They won't be able to see this LLC's records or documents. Their past entries and balances stay as they are.")
         }
         .confirmationDialog(app.isDemo ? "Exit demo?" : "Sign out?", isPresented: $confirmSignOut, titleVisibility: .visible) {
             Button(app.isDemo ? "Exit demo" : "Sign out", role: .destructive) { Task { await app.signOut() } }

@@ -224,7 +224,8 @@ struct PartnerPicker: View {
     var body: some View {
         Picker(label, selection: $partnerId) {
             if allowLLC { Text("LLC account").tag(UUID?.none) } else { Text("Choose…").tag(UUID?.none) }
-            ForEach(app.ledger.s.members) { m in
+            // Partners whose access was removed aren't offered for new entries (unless already chosen).
+            ForEach(app.ledger.s.members.filter { $0.hasAccess || $0.userId == partnerId }) { m in
                 Text(m.userId == app.me ? "\(m.displayName) (me)" : m.displayName).tag(Optional(m.userId))
             }
         }
@@ -309,7 +310,7 @@ struct DemoBanner: View {
                 Text("DEMO MODE · sample data on this phone only").font(.footnote.weight(.bold))
                 Spacer()
                 Menu {
-                    ForEach(app.ledger.s.members) { m in
+                    ForEach(app.ledger.s.members.filter(\.hasAccess)) { m in
                         Button { Task { await app.actAs(m.userId) } } label: {
                             Label("Act as \(m.displayName)", systemImage: m.userId == app.me ? "checkmark" : "person")
                         }
