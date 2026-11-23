@@ -17,8 +17,14 @@ struct MoneyText: View {
 struct StatusBadge: View {
     let status: StatusLabel
     var body: some View {
-        Label(status.text, systemImage: status.symbol)
+        // Tight icon + words on one line, so the badge never wraps letter by letter in a narrow row.
+        HStack(spacing: 4) {
+            Image(systemName: status.symbol)
+            Text(status.text)
+        }
             .font(.caption.weight(.semibold))
+            .lineLimit(1)
+            .fixedSize()
             .padding(.horizontal, 8).padding(.vertical, 3)
             .foregroundStyle(status.tone.color)
             .background(status.tone.color.opacity(0.12), in: Capsule())
@@ -64,7 +70,9 @@ struct EntryRow: View {
                 HStack(spacing: 6) {
                     StatusBadge(status: entry.status)
                     if entry.attachmentCount > 0 {
-                        Label("\(entry.attachmentCount)", systemImage: "paperclip").font(.caption).foregroundStyle(.secondary)
+                        HStack(spacing: 2) { Image(systemName: "paperclip"); Text("\(entry.attachmentCount)") }
+                            .font(.caption).foregroundStyle(.secondary).fixedSize()
+                            .accessibilityElement(children: .ignore)
                             .accessibilityLabel("\(entry.attachmentCount) documents")
                     }
                     if !app.pending(for: entry.ref).isEmpty {
@@ -79,14 +87,17 @@ struct EntryRow: View {
                     MoneyText(cents: bal.outstandingCents, font: .body.weight(.semibold))
                     Text("due").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
                     if bal.outstandingCents != bal.totalCents {
-                        Text("of \(Money.format(bal.totalCents)) · \(Money.format(bal.paidCents)) paid")
+                        // Two short lines keep this column narrow enough for the status badge beside it.
+                        Text("of \(Money.format(bal.totalCents)) ·\n\(Money.format(bal.paidCents)) paid")
                             .font(.caption2.monospacedDigit()).foregroundStyle(.secondary)
+                            .multilineTextAlignment(.trailing)
                     }
                 } else {
                     MoneyText(cents: entry.amountCents, font: .body.weight(.semibold))
                 }
                 Text(Days.display(entry.date)).font(.caption).foregroundStyle(.secondary)
             }
+            .fixedSize(horizontal: true, vertical: false)
         }
         .padding(.vertical, 4)
         .accessibilityElement(children: .combine)
