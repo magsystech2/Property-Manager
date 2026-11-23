@@ -147,7 +147,7 @@ struct ExportView: View {
     var body: some View {
         let l = app.ledger
         let rows = CSVExport.rows(l, filter)
-        func sum(_ k: KeyPath<CSVExport.Row, Cents>) -> Cents { rows.reduce(0) { $0 + $1[keyPath: k] } }
+        let sum: (KeyPath<CSVExport.Row, Cents>) -> Cents = { k in rows.reduce(0) { $0 + $1[keyPath: k] } }
         Form {
             Section {
                 ProjectPicker(projectId: $filter.projectId, allowNone: true)
