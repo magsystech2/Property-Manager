@@ -166,6 +166,7 @@ textarea { min-height: 70px; resize: vertical; }
 .callout.warn { background: var(--warn-soft); color: var(--warn); }
 .callout.bad { background: var(--bad-soft); color: var(--bad); }
 .callout.good { background: var(--good-soft); color: var(--good); }
+.field-error { color: var(--bad); font-size: 14px; margin-top: -4px; }
 .callout.info { background: var(--accent-soft); color: var(--text); }
 
 /* Modal */

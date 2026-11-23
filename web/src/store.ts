@@ -15,7 +15,7 @@ export type Phase = 'launching' | 'welcome' | 'signIn' | 'chooseWorkspace' | 're
 
 /** Every form the app can open, from the Add menu or from a screen. */
 export type Modal =
-  | { type: 'transaction'; draft: TransactionDraft }
+  | { type: 'transaction'; draft: TransactionDraft; files?: File[] }
   | { type: 'voice' }
   | { type: 'payment'; billId?: string | null }
   | { type: 'contribution'; projectId?: string | null; partnerId?: string | null }
@@ -66,6 +66,7 @@ export class AppStore {
   get demo() { return this.backend instanceof DemoBackend ? this.backend : null }
 
   showToast(msg: string) {
+    this.error = null // a success means an earlier error no longer applies
     this.toast = msg
     window.clearTimeout(this.toastTimer)
     this.toastTimer = window.setTimeout(() => { this.toast = null; this.emit() }, 3000)

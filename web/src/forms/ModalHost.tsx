@@ -12,7 +12,7 @@ export function ModalHost() {
   if (!m) return null
   const close = () => app.open(null)
   switch (m.type) {
-    case 'transaction': return <TransactionForm key={m.draft.id} initial={m.draft} onClose={close} />
+    case 'transaction': return <TransactionForm key={m.draft.id} initial={m.draft} initialFiles={m.files} onClose={close} />
     case 'voice': return <VoiceForm onClose={close} />
     case 'payment': return <PaymentForm billId={m.billId} onClose={close} />
     case 'contribution': return <ContributionForm projectId={m.projectId} partnerId={m.partnerId} onClose={close} />

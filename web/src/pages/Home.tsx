@@ -20,7 +20,7 @@ export function HomePage() {
 
       {h.overdue.length > 0 && (
         <Section title={<span className="bad row" style={{ gap: 6 }}><Icon name="alert" size={14} />Overdue bills</span>}>
-          <EntryList entries={h.overdue} />
+          <EntryList entries={h.overdue} showDue />
         </Section>
       )}
       {h.needs_review.length > 0 && (
@@ -48,7 +48,7 @@ export function HomePage() {
 
       <div className="grid2">
         <Section title="Due in the next 14 days">
-          <EntryList entries={h.due_soon} empty="No bills due in the next 14 days." />
+          <EntryList entries={h.due_soon} showDue empty="No bills due in the next 14 days." />
         </Section>
         <Section title="Owed to each partner">
           {h.partner_balances.map((b) => (

@@ -36,12 +36,22 @@ export function PaymentForm({ billId: initialBill, onClose }: { billId?: string 
     const b = l.bill(bid)!
     return `${l.vendor(b.vendor_id)?.name ?? 'Vendor'}${b.invoice_number ? ` #${b.invoice_number}` : ''} · ${l.project(b.project_id)?.nickname ?? ''} · owes ${Money.format(l.balance(b.id).outstanding_cents)}`
   }
-  const save = async () => {
+  const draft = (): BillPayment | null => {
     const ws = app.workspace?.id
-    if (!ws || !billId) return
-    const p: BillPayment = { id, workspace_id: ws, bill_id: billId, kind, payment_date: date, amount_cents: cents,
+    if (!ws || !billId) return null
+    return { id, workspace_id: ws, bill_id: billId, kind, payment_date: date, amount_cents: cents,
       paid_by_user_id: kind === 'credit' ? null : payer, payment_method: method, reference, status: 'posted', client_id: id }
-    try { Rules.checkPayment(p, l) } catch (e) { return app.showError(e) }
+  }
+  // Checked as you type, shown under the amount, and gone as soon as the amount is valid.
+  let amountError: string | null = null
+  if (amount.trim()) {
+    const d = draft()
+    if (Money.parse(amount) == null) amountError = 'Enter an amount like 250 or 1,250.50.'
+    else if (d) { try { Rules.checkPayment(d, l) } catch (e) { amountError = (e as Error).message } }
+  }
+  const save = async () => {
+    const p = draft()
+    if (!p || amountError) return
     setBusy(true)
     if (await app.insert({ type: 'payment', row: p }, `${paymentKindLabel(kind)} recorded`)) {
       await app.attach(files, { kind: 'payment', id })
@@ -50,7 +60,7 @@ export function PaymentForm({ billId: initialBill, onClose }: { billId?: string 
     setBusy(false)
   }
   return (
-    <ModalShell title="Record payment" onClose={onClose} onSave={save} saveTitle="Save payment" canSave={!!billId && cents > 0} busy={busy}>
+    <ModalShell title="Record payment" onClose={onClose} onSave={save} saveTitle="Save payment" canSave={!!billId && cents > 0 && !amountError} busy={busy}>
       <div className="panel">
         <Field label="Bill">
           <select value={billId ?? ''} onChange={(e) => setBillId(e.target.value || null)}>
@@ -65,6 +75,7 @@ export function PaymentForm({ billId: initialBill, onClose }: { billId?: string 
       <div className="panel">
         <Segmented value={kind} onChange={setKind} options={[['payment', 'Payment'], ['credit', 'Vendor credit'], ['refund', 'Vendor refund']]} />
         <Field label="Amount"><AmountInput big value={amount} onChange={setAmount} /></Field>
+        {amountError && <div className="field-error" role="alert">{amountError}</div>}
         {bal && kind === 'payment' && <button type="button" className="btn" style={{ alignSelf: 'flex-start' }} onClick={() => setAmount(Money.plain(bal.outstanding_cents))}>Pay full balance {Money.format(bal.outstanding_cents)}</button>}
         <Field label="Date"><input type="date" value={date} onChange={(e) => setDate(e.target.value)} /></Field>
         <div className="note">{kind === 'credit' ? 'A credit memo lowers what you owe without any cash moving.'

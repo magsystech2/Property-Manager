@@ -32,18 +32,40 @@ export default function App() {
   )
 }
 
-const addActions: { label: string; desc: string; icon: string; open: () => void }[] = [
-  { label: 'Add expense', desc: 'A receipt, already paid', icon: 'receipt', open: () => store.open({ type: 'transaction', draft: newDraft('receipt') }) },
-  { label: 'Add bill', desc: 'An invoice still owed', icon: 'doc', open: () => store.open({ type: 'transaction', draft: newDraft('bill') }) },
+/** On a phone this opens the camera straight away; on a computer it opens the photo picker. */
+function scanReceipt(projectId: string | null) {
+  const input = document.createElement('input')
+  input.type = 'file'
+  input.accept = 'image/*,application/pdf'
+  input.setAttribute('capture', 'environment')
+  input.onchange = () => {
+    const files = Array.from(input.files ?? [])
+    if (files.length) store.open({ type: 'transaction', draft: newDraft('receipt', projectId), files })
+  }
+  input.click()
+}
+
+/** The project whose page is open, so new entries start on that project (still changeable in the form). */
+function currentProjectId(pathname: string): string | null {
+  const m = /^\/projects\/([^/]+)/.exec(pathname)
+  return m && store.ledger.project(m[1]) ? m[1] : null
+}
+
+const addActions: { label: string; desc: string; icon: string; open: (projectId: string | null) => void }[] = [
+  { label: 'Scan receipt', desc: 'Take a photo, then fill in the details', icon: 'camera', open: (pid) => scanReceipt(pid) },
+  { label: 'Add expense', desc: 'A receipt, already paid', icon: 'receipt', open: (pid) => store.open({ type: 'transaction', draft: newDraft('receipt', pid) }) },
+  { label: 'Add bill', desc: 'An invoice still owed', icon: 'doc', open: (pid) => store.open({ type: 'transaction', draft: newDraft('bill', pid) }) },
   { label: 'Record payment', desc: 'Money paid on a bill', icon: 'cash', open: () => store.open({ type: 'payment' }) },
   { label: 'Say it', desc: 'Speak or type a sentence', icon: 'mic', open: () => store.open({ type: 'voice' }) },
-  { label: 'Add contribution', desc: 'Capital a partner put in', icon: 'bank', open: () => store.open({ type: 'contribution', partnerId: store.me }) },
+  { label: 'Add contribution', desc: 'Capital a partner put in', icon: 'bank', open: (pid) => store.open({ type: 'contribution', partnerId: store.me, projectId: pid }) },
   { label: 'Reimburse a partner', desc: 'Pay back personal spending', icon: 'users', open: () => store.open({ type: 'reimbursement' }) },
-  { label: 'Add commitment', desc: 'A contract or agreed quote', icon: 'sign', open: () => store.open({ type: 'commitment' }) },
+  { label: 'Add commitment', desc: 'A contract or agreed quote', icon: 'sign', open: (pid) => store.open({ type: 'commitment', projectId: pid }) },
 ]
 
 function AddMenu({ mobile, onClose }: { mobile?: boolean; onClose: () => void }) {
   const ref = useRef<HTMLDivElement>(null)
+  const loc = useLocation()
+  const pid = currentProjectId(loc.pathname)
   useEffect(() => {
     const h = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) onClose() }
     setTimeout(() => window.addEventListener('mousedown', h))
@@ -51,8 +73,9 @@ function AddMenu({ mobile, onClose }: { mobile?: boolean; onClose: () => void })
   }, [onClose])
   return (
     <div ref={ref} className={`card menu-list ${mobile ? 'mobile-add-menu' : 'add-menu'}`} role="menu">
+      {pid && <div className="small muted" style={{ padding: '6px 12px' }}>For {store.ledger.project(pid)?.nickname}</div>}
       {addActions.map((a) => (
-        <button key={a.label} role="menuitem" onClick={() => { onClose(); a.open() }}>
+        <button key={a.label} role="menuitem" onClick={() => { a.open(pid); onClose() }}>
           <Icon name={a.icon} /><span><div style={{ fontWeight: 600 }}>{a.label}</div><div className="desc">{a.desc}</div></span>
         </button>
       ))}
@@ -64,7 +87,8 @@ function Shell() {
   const app = useStore()
   const [menu, setMenu] = useState<'side' | 'tab' | null>(null)
   const loc = useLocation()
-  useEffect(() => { window.scrollTo(0, 0) }, [loc.pathname])
+  // A new screen starts clean: scroll to top and drop an error banner left from the last one.
+  useEffect(() => { window.scrollTo(0, 0); if (store.error) { store.error = null; store.emit() } }, [loc.pathname])
   const nav = [
     { to: '/', label: 'Home', icon: 'home', end: true },
     { to: '/projects', label: 'Projects', icon: 'folder' },

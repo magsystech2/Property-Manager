@@ -27,9 +27,9 @@ export interface TransactionDraft {
   error?: string | null
 }
 
-export function newDraft(kind: 'receipt' | 'bill' = 'receipt'): TransactionDraft {
+export function newDraft(kind: 'receipt' | 'bill' = 'receipt', projectId: string | null = null): TransactionDraft {
   return {
-    id: uuid(), kind, total_text: '', project_id: null, vendor_id: null, new_vendor_name: '', new_vendor_id: uuid(),
+    id: uuid(), kind, total_text: '', project_id: projectId, vendor_id: null, new_vendor_name: '', new_vendor_id: uuid(),
     date: Days.today, payer: kind === 'bill' ? 'llc' : 'me', payment_method: 'card', reference: '', is_refund: false,
     invoice_number: '', due_date: null, commitment_id: null, splits: [{ id: uuid(), category_id: null, amount_text: '' }],
     tax_text: '', description: '', updated_at: new Date().toISOString(),

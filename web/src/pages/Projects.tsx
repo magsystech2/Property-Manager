@@ -1,3 +1,4 @@
+import { newDraft } from '../drafts'
 import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useStore } from '../store'
@@ -124,6 +125,8 @@ function Overview({ pid }: { pid: string }) {
           </Section>
         )}
         <Section title="Quick actions">
+          <button className="item" onClick={() => app.open({ type: 'transaction', draft: newDraft('receipt', pid) })}><Icon name="receipt" /><span className="grow">Add expense for this project</span></button>
+          <button className="item" onClick={() => app.open({ type: 'transaction', draft: newDraft('bill', pid) })}><Icon name="doc" /><span className="grow">Add bill for this project</span></button>
           <button className="item" onClick={() => app.open({ type: 'proceeds', projectId: pid })}><Icon name="cash" /><span className="grow">Record sale proceeds</span></button>
           <button className="item" onClick={() => app.open({ type: 'contribution', projectId: pid, partnerId: app.me })}><Icon name="bank" /><span className="grow">Add contribution for this project</span></button>
         </Section>

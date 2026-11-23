@@ -22,6 +22,7 @@ const paths: Record<string, string> = {
   x: 'M18 6 6 18M6 6l12 12',
   clip: 'M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48',
   mic: 'M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3zM19 10v2a7 7 0 0 1-14 0v-2M12 19v3',
+  camera: 'M4 8h3l2-3h6l2 3h3v11H4zM12 17a4 4 0 1 0 0-8 4 4 0 0 0 0 8z',
   receipt: 'M5 3v18l2-1.5L9 21l2-1.5L13 21l2-1.5L17 21l2-1.5V3l-2 1.5L15 3l-2 1.5L11 3 9 4.5 7 3zM9 8h6M9 12h6M9 16h4',
   doc: 'M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8zM14 3v5h5M9 13h6M9 17h6',
   cash: 'M2 7h20v10H2zM12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM6 12h.01M18 12h.01',
@@ -56,7 +57,11 @@ export function StatusBadge({ status }: { status: StatusLabel }) {
 
 export const recordPath = (r: EntryRef) => `/records/${r.kind}/${r.id}`
 
-export function EntryRow({ entry }: { entry: Entry }) {
+/** With showDue, a bill shows what's still owed as the main figure, with the total and amount paid under it. */
+export function EntryRow({ entry, showDue }: { entry: Entry; showDue?: boolean }) {
+  const app = useStore()
+  const bal = showDue && entry.ref.kind === 'bill' ? app.ledger.balance(entry.ref.id) : null
+  const settled = bal ? bal.total_cents - bal.outstanding_cents : 0
   return (
     <Link className="item" to={recordPath(entry.ref)}>
       <div className="grow">
@@ -64,7 +69,12 @@ export function EntryRow({ entry }: { entry: Entry }) {
         <div className="subtitle">{Days.display(entry.date)} · {entry.subtitle}</div>
       </div>
       <div className="amount">
-        <MoneyText cents={entry.amount_cents} bold />
+        {bal ? (
+          <>
+            <div><MoneyText cents={bal.outstanding_cents} bold /> <span className="small muted">due</span></div>
+            {settled !== 0 && <div className="small muted">of {Money.format(bal.total_cents)} · {Money.format(settled)} paid</div>}
+          </>
+        ) : <MoneyText cents={entry.amount_cents} bold />}
         <div className="row" style={{ justifyContent: 'flex-end', gap: 6, marginTop: 3 }}>
           {entry.attachment_count > 0 && <span className="muted" title={`${entry.attachment_count} document(s)`}><Icon name="clip" size={13} /></span>}
           <StatusBadge status={entry.status} />
@@ -74,13 +84,13 @@ export function EntryRow({ entry }: { entry: Entry }) {
   )
 }
 
-export function EntryList({ entries, empty = 'Nothing here yet.', limit }: { entries: Entry[]; empty?: string; limit?: number }) {
+export function EntryList({ entries, empty = 'Nothing here yet.', limit, showDue }: { entries: Entry[]; empty?: string; limit?: number; showDue?: boolean }) {
   const [all, setAll] = useState(false)
   const shown = limit && !all ? entries.slice(0, limit) : entries
   if (entries.length === 0) return <div className="empty">{empty}</div>
   return (
     <div className="list">
-      {shown.map((e) => <EntryRow key={`${e.ref.kind}:${e.ref.id}`} entry={e} />)}
+      {shown.map((e) => <EntryRow key={`${e.ref.kind}:${e.ref.id}`} entry={e} showDue={showDue} />)}
       {limit && entries.length > limit && !all && (
         <button className="item" onClick={() => setAll(true)}><span className="grow" style={{ color: 'var(--accent)', fontWeight: 600 }}>Show all {entries.length}</span></button>
       )}

@@ -6,7 +6,7 @@ import { isActiveProject } from '../core/models'
 import { unallocated, type TransactionDraft } from '../drafts'
 import { AmountInput, CategorySelect, EntryRow, Field, FilePicker, MethodSelect, ModalShell, ProjectSelect, Segmented, VendorInput } from '../ui/common'
 
-export function TransactionForm({ initial, onClose, note }: { initial: TransactionDraft; onClose: () => void; note?: string }) {
+export function TransactionForm({ initial, initialFiles, onClose, note }: { initial: TransactionDraft; initialFiles?: File[]; onClose: () => void; note?: string }) {
   const app = useStore()
   const l = app.ledger
   const [d, setD] = useState<TransactionDraft>(() => {
@@ -15,7 +15,7 @@ export function TransactionForm({ initial, onClose, note }: { initial: Transacti
     if (!x.project_id && active.length === 1) x.project_id = active[0].id
     return x
   })
-  const [files, setFiles] = useState<File[]>([])
+  const [files, setFiles] = useState<File[]>(initialFiles ?? [])
   const [busy, setBusy] = useState(false)
   const set = (patch: Partial<TransactionDraft>) => setD((p) => ({ ...p, ...patch }))
   const total = Money.parse(d.total_text) ?? -1
