@@ -121,7 +121,7 @@ function Shell() {
             <strong>DEMO MODE</strong>
             <span>Sample data in this browser only. Acting as</span>
             <select value={app.me ?? ''} onChange={(e) => app.actAs(e.target.value)} aria-label="Act as partner">
-              {app.ledger.s.members.map((m) => <option key={m.user_id} value={m.user_id}>{m.display_name}</option>)}
+              {app.ledger.s.members.filter((m) => !m.access_revoked_at).map((m) => <option key={m.user_id} value={m.user_id}>{m.display_name}</option>)}
             </select>
             <button onClick={() => app.resetDemo()}>Reset sample data</button>
             <button onClick={() => app.signOut()}>Exit demo</button>

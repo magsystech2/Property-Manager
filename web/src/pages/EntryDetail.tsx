@@ -26,7 +26,7 @@ export function EntryDetailPage() {
         <div className="stack"><Details refx={ref} /></div>
         <div className="stack">
           <Section title="Documents" footer="Adding a document never changes amounts or balances."
-            action={<button className="btn link" onClick={() => app.open({ type: 'attach', ref })}><Icon name="clip" size={14} /> Attach</button>}>
+            action={<button className="btn link" onClick={() => app.open({ type: 'attach', target: { kind: 'record', ref } })}><Icon name="clip" size={14} /> Attach</button>}>
             {l.attachmentsFor(ref).length === 0 && <div className="empty">No documents yet.</div>}
             {l.attachmentsFor(ref).map((a) => <AttachmentRow key={a.id} a={a} />)}
           </Section>

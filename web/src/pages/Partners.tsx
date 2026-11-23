@@ -30,6 +30,7 @@ export function PartnersPage() {
               <div className="row">
                 <span className="title">{b.member.display_name}{b.member.user_id === app.me ? ' (me)' : ''}</span>
                 {b.member.role === 'owner' && <span className="pill">Owner</span>}
+                {b.member.access_revoked_at && <span className="badge bad"><Icon name="lock" size={12} />No access</span>}
               </div>
               <div className="subtitle num">Paid personally {Money.format(b.out_of_pocket_cents)} · Reimbursed {Money.format(b.reimbursed_cents)} · Contributed {Money.format(b.contributions_cents)}</div>
               {b.pending_reimbursement_cents > 0 && <div className="small warn bold">{Money.format(b.pending_reimbursement_cents)} reimbursement pending</div>}
@@ -56,7 +57,7 @@ export function PartnerDetailPage() {
   const llcWide = l.s.contributions.filter((c) => c.partner_user_id === id && !c.project_id && c.status !== 'void').reduce((a, c) => a + c.amount_cents, 0)
   return (
     <div className="stack">
-      <PageHead title={name} sub={b.member.email ?? undefined} back="/partners">
+      <PageHead title={name} sub={[b.member.email, b.member.access_revoked_at ? 'Access removed: still in the books, but can’t see this LLC' : null].filter(Boolean).join(' · ') || undefined} back="/partners">
         <div className="row wrap">
           <button className="btn primary" disabled={b.owed_cents <= 0} onClick={() => app.open({ type: 'reimbursement', partnerId: id })}>
             {id === app.me ? 'Request reimbursement' : `Reimburse ${name}`}

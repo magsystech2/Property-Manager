@@ -14,6 +14,9 @@ import { DraftStore, draftAllocations, draftTotal, type TransactionDraft } from 
 export type Phase = 'launching' | 'welcome' | 'signIn' | 'chooseWorkspace' | 'ready'
 
 /** Every form the app can open, from the Add menu or from a screen. */
+/** Where a document gets filed: on a transaction, or directly on a project or vendor (permits, contracts, W-9s…). */
+export type AttachTarget = { kind: 'record'; ref: EntryRef } | { kind: 'project'; id: string } | { kind: 'vendor'; id: string }
+
 export type Modal =
   | { type: 'transaction'; draft: TransactionDraft; files?: File[] }
   | { type: 'voice' }
@@ -28,7 +31,7 @@ export type Modal =
   | { type: 'vendor'; vendor?: Vendor | null }
   | { type: 'void'; ref: EntryRef }
   | { type: 'markPaid'; ref: EntryRef }
-  | { type: 'attach'; ref: EntryRef }
+  | { type: 'attach'; target: AttachTarget }
 
 function safeName(name: string) {
   return name.replace(/[^A-Za-z0-9.-]/g, '-')
@@ -289,9 +292,12 @@ export class AppStore {
     })
   }
 
-  private attachmentRow(ws: string, path: string, f: File, ref: EntryRef, clientId: string): Attachment {
+  private attachmentRow(ws: string, path: string, f: File, target: AttachTarget | EntryRef, clientId: string): Attachment {
     const a: Attachment = { id: uuid(), workspace_id: ws, storage_path: path, filename: f.name, mime_type: f.type || 'application/octet-stream',
       size_bytes: f.size, client_id: clientId }
+    if (target.kind === 'project') { a.project_id = target.id; return a }
+    if (target.kind === 'vendor') { a.vendor_id = target.id; return a }
+    const ref = target.kind === 'record' ? target.ref : target
     switch (ref.kind) {
       case 'expense': a.expense_id = ref.id; break
       case 'bill': a.bill_id = ref.id; break
@@ -305,7 +311,7 @@ export class AppStore {
   }
 
   /** Uploads documents and links them to an existing record. Never changes amounts. */
-  async attach(files: File[], ref: EntryRef): Promise<boolean> {
+  async attach(files: File[], target: AttachTarget | EntryRef): Promise<boolean> {
     const b = this.backend
     const ws = this.workspace?.id
     if (!b || !ws || files.length === 0) return true
@@ -313,7 +319,7 @@ export class AppStore {
       for (const f of files) {
         const path = `${ws}/${uuid()}-${safeName(f.name)}`
         await b.upload(f, path, f.type || 'application/octet-stream')
-        await b.addAttachment(this.attachmentRow(ws, path, f, ref, uuid()))
+        await b.addAttachment(this.attachmentRow(ws, path, f, target, uuid()))
       }
     })
     if (ok) { this.showToast(files.length === 1 ? 'Document attached' : `${files.length} documents attached`); await this.reload(true) }
@@ -355,6 +361,13 @@ export class AppStore {
   invite(email: string, role: string) {
     const ws = this.workspace?.id
     return ws ? this.simple((b) => b.invite(email, role, ws), 'Invitation saved') : Promise.resolve(false)
+  }
+  async setAccess(m: Member, revoked: boolean) {
+    const b = this.backend
+    if (!b) return false
+    const ok = await this.run(() => b.setAccess(m, revoked))
+    if (ok) { this.showToast(revoked ? `${m.display_name} can no longer see this LLC` : `${m.display_name} has access again`); await this.reload(true) }
+    return ok
   }
   cancelInvite(i: Invite) { return this.simple((b) => b.cancelInvite(i)) }
 

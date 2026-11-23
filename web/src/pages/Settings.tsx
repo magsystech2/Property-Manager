@@ -3,7 +3,7 @@ import { useStore } from '../store'
 import { uuid } from '../core/money'
 import { AppConfig } from '../config'
 import type { BudgetCategory } from '../core/models'
-import { KV, PageHead, Section } from '../ui/common'
+import { Icon, KV, PageHead, Section } from '../ui/common'
 import { LiveSetup } from './Onboarding'
 
 export function SettingsPage() {
@@ -41,17 +41,27 @@ export function SettingsPage() {
             </label>
           </Section>
 
-          <Section title="Members">
+          <Section title="Members" footer={app.isOwner ? "Removing access keeps the partner's name, records and balances. To remove an owner's access, change them to partner first." : undefined}>
             {s.members.map((m) => (
               <div key={m.user_id} className="item">
                 <div className="grow">
                   <div className="title">{m.display_name}{m.user_id === app.me ? ' (me)' : ''}</div>
                   {m.email && <div className="subtitle">{m.email}</div>}
+                  {m.access_revoked_at && <div className="subtitle" style={{ color: 'var(--bad)' }}><Icon name="lock" size={12} /> Access removed</div>}
                 </div>
-                {app.isOwner && m.user_id !== app.me ? (
-                  <select style={{ width: 'auto' }} value={m.role} onChange={(e) => app.saveMember({ ...m, role: e.target.value })} aria-label={`Role for ${m.display_name}`}>
-                    <option value="owner">Owner</option><option value="partner">Partner</option>
-                  </select>
+                {m.access_revoked_at ? (
+                  app.isOwner ? <button className="btn" onClick={() => app.setAccess(m, false)}>Restore access</button> : <span className="muted">No access</span>
+                ) : app.isOwner && m.user_id !== app.me ? (
+                  <div className="row" style={{ gap: 8 }}>
+                    <select style={{ width: 'auto' }} value={m.role} onChange={(e) => app.saveMember({ ...m, role: e.target.value })} aria-label={`Role for ${m.display_name}`}>
+                      <option value="owner">Owner</option><option value="partner">Partner</option>
+                    </select>
+                    {m.role !== 'owner' && (
+                      <button className="btn link danger" onClick={() => {
+                        if (confirm(`Remove ${m.display_name}'s access?\n\nThey won't be able to see or change anything in this LLC. Their name, records and what the LLC owes them stay in the books. You can restore access later.`)) app.setAccess(m, true)
+                      }}>Remove access</button>
+                    )}
+                  </div>
                 ) : <span className="muted">{m.role === 'owner' ? 'Owner' : 'Partner'}</span>}
               </div>
             ))}

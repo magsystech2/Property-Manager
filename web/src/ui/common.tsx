@@ -18,6 +18,7 @@ const paths: Record<string, string> = {
   settings: 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68 1.65 1.65 0 0 0 10 3.17V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9c.14.34.22.7.22 1.07',
   check: 'M20 6 9 17l-5-5',
   alert: 'M12 9v4M12 17h.01M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z',
+  lock: 'M6 11h12v10H6zM8 11V8a4 4 0 0 1 8 0v3',
   clock: 'M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20zM12 6v6l4 2',
   x: 'M18 6 6 18M6 6l12 12',
   clip: 'M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48',
@@ -190,7 +191,8 @@ export function PartnerSelect({ value, onChange, allowLLC, llcLabel = 'LLC accou
   return (
     <select value={value ?? ''} onChange={(e) => onChange(e.target.value || null)}>
       {allowLLC ? <option value="">{llcLabel}</option> : <option value="">Choose a partner…</option>}
-      {app.ledger.s.members.map((m) => <option key={m.user_id} value={m.user_id}>{m.display_name}{m.user_id === app.me ? ' (me)' : ''}</option>)}
+      {/* Partners whose access was removed aren't offered for new entries (unless already chosen). */}
+      {app.ledger.s.members.filter((m) => !m.access_revoked_at || m.user_id === value).map((m) => <option key={m.user_id} value={m.user_id}>{m.display_name}{m.user_id === app.me ? ' (me)' : ''}</option>)}
     </select>
   )
 }
@@ -293,6 +295,7 @@ export function AttachmentRow({ a, showRecord }: { a: Attachment; showRecord?: b
         <div className="subtitle">
           {Math.max(1, Math.round(a.size_bytes / 1024))} KB · {app.ledger.payerName(a.uploaded_by)}{a.created_at ? ` · ${Days.display(a.created_at.slice(0, 10))}` : ''}
           {showRecord && entry && <> · <Link to={recordPath(entry.ref)}>{entry.title}</Link></>}
+          {showRecord && !ref && (a.vendor_id ? ' · Vendor document' : a.project_id ? ' · Project document' : '')}
         </div>
       </div>
       <button className="btn" disabled={busy} onClick={open}>{busy ? 'Opening…' : 'Open'}</button>

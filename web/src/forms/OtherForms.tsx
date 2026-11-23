@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { useStore } from '../store'
+import { type AttachTarget, useStore } from '../store'
 import { Days, Money, uuid } from '../core/money'
 import { Rules } from '../core/rules'
 import { parseVoice } from '../core/parsers'
@@ -487,15 +487,23 @@ export function MarkPaidForm({ refx, onClose }: { refx: EntryRef } & Close) {
   )
 }
 
-export function AttachForm({ refx, onClose }: { refx: EntryRef } & Close) {
+export function AttachForm({ target, onClose }: { target: AttachTarget } & Close) {
   const app = useStore()
+  const l = app.ledger
   const [files, setFiles] = useState<File[]>([])
   const [busy, setBusy] = useState(false)
-  const save = async () => { setBusy(true); if (await app.attach(files, refx)) onClose(); setBusy(false) }
+  const save = async () => { setBusy(true); if (await app.attach(files, target)) onClose(); setBusy(false) }
+  const [title, pickerTitle, note] = target.kind === 'project'
+    ? [`Add document to ${l.project(target.id)?.nickname ?? 'project'}`, 'Permit, plan, closing papers…',
+      "Filed on this project for everyone: permits, plans, closing papers and other documents that aren't a single transaction. Totals don't change."]
+    : target.kind === 'vendor'
+      ? [`Add document to ${l.vendor(target.id)?.name ?? 'vendor'}`, 'Contract, W-9, license, insurance…',
+        "Filed on this vendor for everyone: contracts, W-9s, licenses and insurance certificates. Totals don't change."]
+      : ['Attach documents', 'Receipt, invoice or confirmation', 'The document is added to this record for everyone. Amounts and balances stay the same.']
   return (
-    <ModalShell title="Attach documents" onClose={onClose} onSave={save} saveTitle="Upload" canSave={files.length > 0} busy={busy}>
-      <FilePicker files={files} onChange={setFiles} title="Receipt, invoice or confirmation" />
-      <div className="note">Adding a document never changes amounts or balances. Documents are kept for the record and can't be deleted.</div>
+    <ModalShell title={title} onClose={onClose} onSave={save} saveTitle="Upload" canSave={files.length > 0} busy={busy}>
+      <FilePicker files={files} onChange={setFiles} title={pickerTitle} />
+      <div className="note">{note} Documents are kept for the record and can't be deleted.</div>
     </ModalShell>
   )
 }

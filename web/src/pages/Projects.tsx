@@ -225,8 +225,9 @@ function ProjectFiles({ pid }: { pid: string }) {
   const ids = new Set(refs.flatMap((r) => l.attachmentsFor(r).map((a) => a.id)))
   const files = l.s.attachments.filter((a) => a.project_id === pid || ids.has(a.id))
   return (
-    <Section footer="Add documents from a transaction. Adding a document never changes amounts.">
-      {files.length === 0 && <div className="empty">No documents yet.</div>}
+    <Section footer="Receipts and invoices attached to this project's transactions show here too. Adding a document never changes amounts."
+      action={<button className="btn link" onClick={() => app.open({ type: 'attach', target: { kind: 'project', id: pid } })}><Icon name="plus" size={14} /> Add project document</button>}>
+      {files.length === 0 && <div className="empty">No documents yet. Add one here, or attach it to a transaction.</div>}
       {files.map((a) => <AttachmentRow key={a.id} a={a} showRecord />)}
     </Section>
   )

@@ -69,7 +69,7 @@ export function VendorDetailPage() {
         </Section>
       )}
       <Section title="Bills, payments and receipts"><EntryList entries={sum.entries} empty="No transactions yet." limit={100} /></Section>
-      <Section title="Files">
+      <Section title="Files" action={<button className="btn link" onClick={() => app.open({ type: 'attach', target: { kind: 'vendor', id: v.id } })}><Icon name="plus" size={14} /> Add vendor document</button>}>
         {sum.attachments.length === 0 && <div className="empty">No documents yet.</div>}
         {sum.attachments.map((a) => <AttachmentRow key={a.id} a={a} showRecord />)}
       </Section>

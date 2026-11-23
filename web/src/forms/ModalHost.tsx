@@ -25,6 +25,6 @@ export function ModalHost() {
     case 'vendor': return <VendorForm vendor={m.vendor} onClose={close} />
     case 'void': return <VoidForm refx={m.ref} onClose={close} />
     case 'markPaid': return <MarkPaidForm refx={m.ref} onClose={close} />
-    case 'attach': return <AttachForm refx={m.ref} onClose={close} />
+    case 'attach': return <AttachForm target={m.target} onClose={close} />
   }
 }

@@ -169,6 +169,12 @@ export class SupabaseBackend implements Backend {
     await this.wrap(() => this.client.from('workspace_members').update({ display_name: m.display_name, role: m.role })
       .eq('workspace_id', m.workspace_id).eq('user_id', m.user_id))
   }
+  async setAccess(m: Parameters<Backend['setAccess']>[0], revoked: boolean) {
+    // The database allows this only for an owner, and never for an owner or yourself; RLS turns a refusal into no rows.
+    const rows = await this.wrap(() => this.client.from('workspace_members').update({ access_revoked_at: revoked ? new Date().toISOString() : null })
+      .eq('workspace_id', m.workspace_id).eq('user_id', m.user_id).select('user_id'))
+    if (!rows || (rows as unknown[]).length === 0) throw new BackendError('Only an owner can change who has access.')
+  }
   async invite(email: string, role: string, workspace: string) {
     await this.wrap(() => this.client.from('invites').insert({ workspace_id: workspace, email: email.trim().toLowerCase(), role }))
   }
@@ -214,6 +220,7 @@ function mapError(e: unknown): Error {
   if (/Failed to fetch|NetworkError|Load failed/i.test(msg)) return new BackendError('No connection to the server. Check your internet and try again.', true)
   if (msg.includes('bills_invoice_uq')) return new BackendError('That invoice number from this vendor is already entered.')
   if (msg.includes('vendors_name_uq')) return new BackendError('A vendor with that name already exists.')
+  if (/Change an owner to partner|Only an owner can change who has access|Restore access before/.test(msg)) return new BackendError(msg.replace(/^.*?(Change an owner|Only an owner|Restore access)/, '$1'))
   if (msg.includes('row-level security')) return new BackendError("You don't have access to do that in this workspace.")
   return new BackendError(msg)
 }

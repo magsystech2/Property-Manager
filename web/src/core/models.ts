@@ -25,7 +25,11 @@ export interface Member {
   role: 'owner' | 'partner' | string
   display_name: string
   email?: string | null
+  /** Set when an owner removed this partner's access. They stay in the books (names, balances) but can't see the LLC. */
+  access_revoked_at?: string | null
 }
+
+export const hasAccess = (m: Member) => !m.access_revoked_at
 
 export interface Invite { id: string; workspace_id: string; email: string; role: string; accepted_at?: string | null }
 

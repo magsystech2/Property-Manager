@@ -233,6 +233,17 @@ export class DemoBackend implements Backend {
     this.snapshot.members[i] = m
     this.changed()
   }
+  async setAccess(m: Parameters<Backend['setAccess']>[0], revoked: boolean) {
+    const i = this.snapshot.members.findIndex((x) => x.user_id === m.user_id)
+    if (i < 0) return
+    const me = this.snapshot.members.find((x) => x.user_id === this.actingAs)
+    if (me?.role !== 'owner' || me.access_revoked_at) throw new LedgerError('Only an owner can change who has access.')
+    if (revoked && (this.snapshot.members[i].role === 'owner' || m.user_id === this.actingAs)) {
+      throw new LedgerError('Change an owner to partner before removing their access.')
+    }
+    this.snapshot.members[i] = { ...this.snapshot.members[i], access_revoked_at: revoked ? this.now() : null }
+    this.changed()
+  }
   async invite(email: string, role: string, workspace: string) {
     if (!this.isOwner) throw new LedgerError('Only an owner can invite partners.')
     this.snapshot.invites.push({ id: uuid(), workspace_id: workspace, email: email.trim().toLowerCase(), role, accepted_at: null })

@@ -48,6 +48,8 @@ export interface Backend {
   saveCategory(c: BudgetCategory): Promise<void>
   saveWorkspace(w: Workspace): Promise<void>
   saveMember(m: Member): Promise<void>
+  /** Owner only: remove (revoked = true) or restore a partner's access. Their records and balances stay. */
+  setAccess(m: Member, revoked: boolean): Promise<void>
   invite(email: string, role: string, workspace: string): Promise<void>
   cancelInvite(i: Invite): Promise<void>
 
