@@ -277,6 +277,8 @@ struct TransactionForm: View {
             .disabled(busy)
         }
         .font(.headline)
+        .lineLimit(1)
+        .minimumScaleFactor(0.75)   // keep "Save draft" / "Post receipt" on one line
         .padding(.horizontal).padding(.vertical, 8)
         .background(.bar)
     }

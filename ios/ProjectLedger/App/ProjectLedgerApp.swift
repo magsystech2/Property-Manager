@@ -97,7 +97,11 @@ struct MainTabs: View {
 struct AddButtonInset: ViewModifier {
     @Environment(AppModel.self) private var app
     func body(content: Content) -> some View {
-        content.safeAreaInset(edge: .bottom, spacing: 0) {
+        // The inset alone doesn't reach Lists inside the NavigationStack, so also pad
+        // their scroll content by the button's height (64pt + 2×8pt padding).
+        content
+            .contentMargins(.bottom, 80, for: .scrollContent)
+            .safeAreaInset(edge: .bottom, spacing: 0) {
             HStack {
                 Spacer()
                 AddButton(action: Binding(get: { nil }, set: { a in if let a { app.sheet = FormRoute(a) } }))
