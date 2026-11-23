@@ -47,7 +47,7 @@ curl -fsSLO https://raw.githubusercontent.com/magsystech2/property-manager/main/
 bash proxmox-create-lxc.sh
 ```
 
-Variables you can set first: `CTID`, `STORAGE` (default `local-lvm`), `BRIDGE` (default `vmbr0`), `BRANCH` (default `main`). When it finishes it prints the address, for example `http://192.168.1.50:8080`. That works on your home network right away, in demo mode.
+Variables you can set first: `CTID`, `STORAGE` (default `local-lvm`), `BRIDGE` (default `vmbr0`), `BRANCH` (default `main`). When it finishes it prints the address, for example `http://192.168.1.50:8080`. That works on your home network right away, in demo mode. The address comes from your router (DHCP), so add a DHCP reservation for the container if you want it to stay the same.
 
 ### 2. Reach it from anywhere
 

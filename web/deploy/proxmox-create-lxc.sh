@@ -31,7 +31,13 @@ pct create "$CTID" "$TEMPLATE_STORAGE:vztmpl/$TEMPLATE" \
 sleep 8
 
 echo "==> Installing Docker inside the container"
-pct exec "$CTID" -- bash -c "apt-get update -qq && apt-get install -y -qq ca-certificates curl git >/dev/null && curl -fsSL https://get.docker.com | sh >/dev/null"
+# A new container may still be running its own first package update, which holds the apt lock.
+pct exec "$CTID" -- bash -c '
+  for i in $(seq 1 30); do
+    apt-get -o DPkg::Lock::Timeout=60 update -qq && apt-get -o DPkg::Lock::Timeout=60 install -y -qq ca-certificates curl git >/dev/null && exit 0
+    echo "   apt is busy, retrying in 10s ($i/30)"; sleep 10
+  done; exit 1'
+pct exec "$CTID" -- bash -c "curl -fsSL https://get.docker.com | sh >/dev/null"
 
 echo "==> Getting Project Ledger"
 pct exec "$CTID" -- bash -c "git clone --depth 1 -b $BRANCH $REPO /opt/project-ledger && cp /opt/project-ledger/web/deploy/.env.example /opt/project-ledger/web/deploy/.env"
