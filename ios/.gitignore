@@ -1,0 +1,4 @@
+*.xcodeproj/
+DerivedData/
+GoogleService-Info.plist
+xcuserdata/

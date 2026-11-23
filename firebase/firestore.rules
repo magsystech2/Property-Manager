@@ -1,0 +1,48 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Only the partners listed in config/partners (field `emails`, an array of
+    // lowercase email addresses) can read or write anything.
+    function isPartner() {
+      return request.auth != null
+        && request.auth.token.email != null
+        && request.auth.token.email.lower() in
+           get(/databases/$(database)/documents/config/partners).data.emails;
+    }
+
+    // Partner list: readable by partners, edited only in the Firebase console.
+    match /config/{doc} {
+      allow read: if isPartner();
+      allow write: if false;
+    }
+
+    // Each partner's profile (display name). You can only write your own.
+    match /members/{uid} {
+      allow read: if isPartner();
+      allow write: if isPartner() && request.auth.uid == uid;
+    }
+
+    // Properties and contractor invoices: shared, any partner can edit.
+    match /properties/{id} {
+      allow read, write: if isPartner();
+    }
+    match /invoices/{id} {
+      allow read, write: if isPartner();
+    }
+
+    // Expenses: everyone sees everything. An expense is always recorded under
+    // the partner who is signed in, and only that partner can change or delete it.
+    match /expenses/{id} {
+      allow read: if isPartner();
+      allow create: if isPartner()
+        && request.resource.data.createdByUid == request.auth.uid
+        && request.resource.data.amount is number
+        && request.resource.data.amount >= 0;
+      allow update: if isPartner()
+        && resource.data.createdByUid == request.auth.uid
+        && request.resource.data.createdByUid == request.auth.uid;
+      allow delete: if isPartner() && resource.data.createdByUid == request.auth.uid;
+    }
+  }
+}

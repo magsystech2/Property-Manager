@@ -1,0 +1,18 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    function isPartner() {
+      return request.auth != null
+        && request.auth.token.email != null
+        && request.auth.token.email.lower() in
+           firestore.get(/databases/(default)/documents/config/partners).data.emails;
+    }
+    // Receipt photos: receipts/{uid}/{file}. Any partner can view; you upload only to your own folder.
+    match /receipts/{uid}/{file} {
+      allow read: if isPartner();
+      allow write: if isPartner() && request.auth.uid == uid
+        && request.resource.size < 10 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+    }
+  }
+}
