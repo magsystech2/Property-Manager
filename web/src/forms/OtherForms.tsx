@@ -512,7 +512,16 @@ export function VoiceForm({ onClose }: Close) {
     r.continuous = false
     r.onresult = (e) => setText(Array.from(e.results).map((x) => x[0].transcript).join(' '))
     r.onend = () => setListening(false)
-    r.onerror = (e) => { setListening(false); if (e.error !== 'aborted') app.showError(new Error(`Microphone: ${e.error}. You can type the sentence instead.`)) }
+    r.onerror = (e) => {
+      setListening(false)
+      if (e.error === 'aborted' || e.error === 'no-speech') return
+      const msg = e.error === 'not-allowed' || e.error === 'service-not-allowed'
+        ? (window.isSecureContext
+          ? 'The browser blocked the microphone for this site. Allow it in the site settings (the icon left of the address), or type the sentence instead.'
+          : 'Voice needs a secure (https) address. Open the app through its https link, or type the sentence instead.')
+        : `Voice didn't work (${e.error}). You can type the sentence instead.`
+      app.showError(new Error(msg))
+    }
     rec.current = r
     setListening(true)
     r.start()
@@ -536,7 +545,9 @@ export function VoiceForm({ onClose }: Close) {
     <ModalShell title="Say it" onClose={onClose} onSave={next} saveTitle="Continue" canSave={!!text.trim()}>
       <div className="panel">
         <div className="note">Example: “Spent $350 at Home Depot on drywall for Oak Street with my card yesterday.”</div>
-        {Speech ? (
+        {!window.isSecureContext ? (
+          <div className="callout info">Voice needs a secure (https) address, and this page is plain http. Type the sentence below, use your keyboard's dictation button, or open the app through its https link.</div>
+        ) : Speech ? (
           <button type="button" className={`btn big ${listening ? 'danger' : 'primary'}`} onClick={listen}>{listening ? 'Stop listening' : 'Tap and speak'}</button>
         ) : <div className="callout info">This browser can't listen. Type the sentence below, or use your keyboard's dictation button.</div>}
         <Field label="Sentence"><textarea value={text} onChange={(e) => setText(e.target.value)} placeholder="What did you buy, where, how much, for which project, who paid?" /></Field>
