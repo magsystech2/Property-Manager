@@ -1,6 +1,6 @@
 import type {
   Allocation, Bill, BillPayment, BudgetCategory, ChangeOrder, Commitment, Contribution, EntryRef, Expense, Invite, Member,
-  Project, ProjectBudget, Reimbursement, ReimbursementItem, SaleProceed, Snapshot, Vendor, Workspace, Attachment, InboxItem, StatementLine, StatementMatch, Claim, ScheduledDraw, CashBalance, } from '../core/models'
+  Project, ProjectBudget, Reimbursement, ReimbursementItem, SaleProceed, Snapshot, Vendor, Workspace, Attachment, InboxItem, StatementLine, StatementMatch, Claim, ScheduledDraw, CashBalance, Distribution, EntryTemplate, Material, } from '../core/models'
 import type { Day } from '../core/money'
 
 /** New records other than receipts and bills (those carry a category split). */
@@ -9,6 +9,7 @@ export type NewRecord =
   | { type: 'reimbursement'; row: Reimbursement; items: ReimbursementItem[] }
   | { type: 'contribution'; row: Contribution }
   | { type: 'proceeds'; row: SaleProceed }
+  | { type: 'distribution'; row: Distribution }
   | { type: 'commitment'; row: Commitment }
   | { type: 'changeOrder'; row: ChangeOrder }
 
@@ -71,6 +72,14 @@ export interface Backend {
   saveDraw(d: ScheduledDraw): Promise<void>
   deleteDraw(id: string): Promise<void>
   addCashBalance(c: CashBalance): Promise<void>
+  // Sale and profit split
+  /** Replaces the split for a project (or the LLC default when projectId is null). An empty list goes back to the default. */
+  setProfitShares(workspace: string, projectId: string | null, shares: { partner_user_id: string; share_bps: number }[]): Promise<void>
+  // Materials and templates (not money; can be edited and removed)
+  saveMaterial(m: Material): Promise<void>
+  deleteMaterial(id: string): Promise<void>
+  saveTemplate(t: EntryTemplate): Promise<void>
+  deleteTemplate(id: string): Promise<void>
   fileURL(path: string): Promise<string>
 
   /** Calls back whenever shared data changes (other partners' edits). Returns an unsubscribe function. */

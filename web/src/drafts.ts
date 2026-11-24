@@ -27,10 +27,24 @@ export interface TransactionDraft {
   error?: string | null
 }
 
+/** Who usually pays receipts for this person ('me', 'llc' or a partner id) and how. Remembered after each receipt. */
+let payerDefault: { payer: string; method: string } = { payer: 'me', method: 'card' }
+const payerKey = (ws: string, me: string) => `ledger.lastPayer.${ws}.${me}`
+export function loadPayerDefault(ws: string, me: string) {
+  try {
+    const v = JSON.parse(localStorage.getItem(payerKey(ws, me)) ?? 'null')
+    payerDefault = v && typeof v.payer === 'string' && typeof v.method === 'string' ? v : { payer: 'me', method: 'card' }
+  } catch { payerDefault = { payer: 'me', method: 'card' } }
+}
+export function rememberPayer(ws: string, me: string, payer: string, method: string) {
+  payerDefault = { payer, method }
+  try { localStorage.setItem(payerKey(ws, me), JSON.stringify(payerDefault)) } catch { /* private window: keep for this session */ }
+}
+
 export function newDraft(kind: 'receipt' | 'bill' = 'receipt', projectId: string | null = null): TransactionDraft {
   return {
     id: uuid(), kind, total_text: '', project_id: projectId, vendor_id: null, new_vendor_name: '', new_vendor_id: uuid(),
-    date: Days.today, payer: kind === 'bill' ? 'llc' : 'me', payment_method: 'card', reference: '', is_refund: false,
+    date: Days.today, payer: kind === 'bill' ? 'llc' : payerDefault.payer, payment_method: kind === 'bill' ? 'card' : payerDefault.method, reference: '', is_refund: false,
     invoice_number: '', due_date: null, commitment_id: null, splits: [{ id: uuid(), category_id: null, amount_text: '' }],
     tax_text: '', description: '', updated_at: new Date().toISOString(),
   }

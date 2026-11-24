@@ -4,13 +4,14 @@ import { Ledger } from './core/ledger'
 import { Rules, LedgerError } from './core/rules'
 import { uuid, Money } from './core/money'
 import { emptySnapshot, type Snapshot, type Workspace, type EntryRef, type Project, type Vendor, type ProjectBudget,
-  type BudgetCategory, type Member, type Invite, type Expense, type Bill, type Attachment , type InboxItem, type StatementLine, type Claim, type ClaimKind, type ScheduledDraw } from './core/models'
+  type BudgetCategory, type Member, type Invite, type Expense, type Bill, type Attachment , type InboxItem, type StatementLine, type Claim, type ClaimKind, type ScheduledDraw, type EntryTemplate, type Material } from './core/models'
 import type { Backend, NewRecord, StatusChange } from './backend/types'
 import { BackendError } from './backend/types'
 import { DemoBackend } from './backend/demo'
 import { SupabaseBackend } from './backend/supabase'
 import { AppConfig } from './config'
-import { DraftStore, draftAllocations, draftTotal, newDraft, type TransactionDraft } from './drafts'
+import { DraftStore, draftAllocations, draftTotal, loadPayerDefault, newDraft, rememberPayer, type TransactionDraft } from './drafts'
+import { advance } from './core/settlement'
 import { lineMatchedCents, suggestFromText, vendorFromDescription } from './core/planning'
 
 export type Phase = 'launching' | 'welcome' | 'signIn' | 'chooseWorkspace' | 'ready'
@@ -20,12 +21,16 @@ export type Phase = 'launching' | 'welcome' | 'signIn' | 'chooseWorkspace' | 're
 export type AttachTarget = { kind: 'record'; ref: EntryRef } | { kind: 'project'; id: string } | { kind: 'vendor'; id: string }
 
 /** A receipt or bill entered from an inbox item (its file is attached) or a statement line (it gets matched). */
-export type SubmitLink = { inbox?: InboxItem; line?: StatementLine }
+export type SubmitLink = { inbox?: InboxItem; line?: StatementLine; template?: EntryTemplate }
 
 export type Modal =
   | { type: 'transaction'; draft: TransactionDraft; files?: File[]; link?: SubmitLink }
   | { type: 'splitLine'; line: StatementLine }
   | { type: 'draw'; commitmentId: string }
+  | { type: 'distribution'; projectId: string; partnerId?: string | null; amountCents?: number | null }
+  | { type: 'shares'; projectId: string | null }
+  | { type: 'material'; projectId: string; material?: Material | null }
+  | { type: 'template'; template?: EntryTemplate | null; from?: EntryRef | null }
   | { type: 'voice' }
   | { type: 'payment'; billId?: string | null }
   | { type: 'contribution'; projectId?: string | null; partnerId?: string | null }
@@ -216,6 +221,7 @@ export class AppStore {
       this.snapshot = s
       this.ledger = new Ledger(s)
       this.lastSynced = new Date()
+      if (this.me) loadPayerDefault(s.workspace.id, this.me)
     } catch (e) {
       if (!quiet) this.showError(e)
     } finally {
@@ -304,6 +310,11 @@ export class AppStore {
         await b.addMatch({ id: uuid(), workspace_id: ws, statement_line_id: link.line.id, expense_id: d.id })
         await b.setStatementStatus(link.line.id, 'matched')
       }
+      // 7. From a repeating template: move it to the next due date.
+      if (link.template && link.template.repeat !== 'none' && link.template.next_due) {
+        await b.saveTemplate({ ...link.template, next_due: advance(link.template.next_due, link.template.repeat) })
+      }
+      if (d.kind === 'receipt' && !link.line && this.me) rememberPayer(ws, this.me, d.payer, d.payment_method)
       this.deleteDraft(d.id)
       this.showToast(d.kind === 'bill' ? 'Bill saved' : 'Receipt saved')
       await this.reload(true)
@@ -460,6 +471,50 @@ export class AppStore {
   }
   releaseClaim(c: Claim) { return this.simple((b) => b.releaseClaim(c.id), 'Released') }
   saveDraw(d: ScheduledDraw) { return this.simple((b) => b.saveDraw(d), 'Draw scheduled') }
+
+  // --- Sale, profit split, materials, templates
+  setProfitShares(projectId: string | null, shares: { partner_user_id: string; share_bps: number }[]) {
+    const ws = this.workspace?.id
+    if (!ws) return Promise.resolve(false)
+    return this.simple((b) => b.setProfitShares(ws, projectId, shares), shares.length ? 'Profit split saved' : 'Back to the default split')
+  }
+  saveMaterial(m: Material) { return this.simple((b) => b.saveMaterial(m), 'Material saved') }
+  deleteMaterial(id: string) { return this.simple((b) => b.deleteMaterial(id), 'Material removed') }
+  saveTemplate(t: EntryTemplate, quiet = false) { return this.simple((b) => b.saveTemplate(t), quiet ? undefined : 'Template saved') }
+  deleteTemplate(id: string) { return this.simple((b) => b.deleteTemplate(id), 'Template removed') }
+  /** Draft from a template: today's date (or its due date when that's past), everything else filled in. */
+  templateDraft(t: EntryTemplate): TransactionDraft {
+    const d = newDraft(t.kind, t.project_id ?? null)
+    d.vendor_id = t.vendor_id ?? null
+    if (t.amount_cents) d.total_text = Money.plain(t.amount_cents)
+    d.splits[0].category_id = t.category_id ?? null
+    d.description = t.description
+    d.payment_method = t.payment_method
+    if (t.kind === 'receipt') d.payer = t.paid_by_user_id ? (t.paid_by_user_id === this.me ? 'me' : t.paid_by_user_id) : 'llc'
+    if (t.kind === 'bill' && t.next_due) d.due_date = t.next_due
+    return d
+  }
+  /** "Add again": a new draft copying a receipt or bill (vendor, project, amount, categories, payer), dated today. */
+  againDraft(ref: EntryRef): TransactionDraft | null {
+    const s = this.snapshot
+    if (!s) return null
+    const e = ref.kind === 'expense' ? s.expenses.find((x) => x.id === ref.id) : undefined
+    const b = ref.kind === 'bill' ? s.bills.find((x) => x.id === ref.id) : undefined
+    const rec = e ?? b
+    if (!rec) return null
+    const d = newDraft(e ? 'receipt' : 'bill', rec.project_id)
+    d.vendor_id = rec.vendor_id
+    d.total_text = Money.plain(rec.total_cents)
+    d.description = rec.description
+    const allocs = s.allocations.filter((a) => (e ? a.expense_id === e.id : a.bill_id === b!.id))
+    if (allocs.length === 1) d.splits = [{ id: uuid(), category_id: allocs[0].category_id, amount_text: '' }]
+    else if (allocs.length > 1) d.splits = allocs.map((a) => ({ id: uuid(), category_id: a.category_id, amount_text: Money.plain(a.amount_cents) }))
+    if (e) {
+      d.payer = e.paid_by_user_id ? (e.paid_by_user_id === this.me ? 'me' : e.paid_by_user_id) : 'llc'
+      d.payment_method = e.payment_method
+    }
+    return d
+  }
   deleteDraw(id: string) { return this.simple((b) => b.deleteDraw(id), 'Draw removed') }
   setCash(amount: number, asOf: string, note: string) {
     const ws = this.workspace?.id

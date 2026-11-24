@@ -1,8 +1,9 @@
+import { DistributionForm, MaterialForm, SaleForm, SharesForm, TemplateForm } from './SaleForms'
 import { SplitLineForm, DrawForm } from './PlanningForms'
 import { useStore } from '../store'
 import { TransactionForm } from './TransactionForm'
 import {
-  AttachForm, BudgetEditor, ChangeOrderForm, CommitmentForm, ContributionForm, MarkPaidForm, PaymentForm, ProceedsForm,
+  AttachForm, BudgetEditor, ChangeOrderForm, CommitmentForm, ContributionForm, MarkPaidForm, PaymentForm,
   ProjectForm, ReimbursementForm, VendorForm, VoiceForm, VoidForm,
 } from './OtherForms'
 
@@ -20,7 +21,11 @@ export function ModalHost() {
     case 'reimbursement': return <ReimbursementForm partnerId={m.partnerId} onClose={close} />
     case 'commitment': return <CommitmentForm projectId={m.projectId} onClose={close} />
     case 'changeOrder': return <ChangeOrderForm commitmentId={m.commitmentId} onClose={close} />
-    case 'proceeds': return <ProceedsForm projectId={m.projectId} onClose={close} />
+    case 'proceeds': return <SaleForm projectId={m.projectId} onClose={close} />
+    case 'distribution': return <DistributionForm projectId={m.projectId} partnerId={m.partnerId} amountCents={m.amountCents} onClose={close} />
+    case 'shares': return <SharesForm projectId={m.projectId} onClose={close} />
+    case 'material': return <MaterialForm projectId={m.projectId} material={m.material} onClose={close} />
+    case 'template': return <TemplateForm template={m.template} from={m.from} onClose={close} />
     case 'project': return <ProjectForm project={m.project} onClose={close} />
     case 'budget': return <BudgetEditor projectId={m.projectId} onClose={close} />
     case 'vendor': return <VendorForm vendor={m.vendor} onClose={close} />

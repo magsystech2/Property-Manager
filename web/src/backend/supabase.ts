@@ -2,7 +2,7 @@
 // Access is enforced by the database (row-level security + triggers), so the app can't bypass it.
 import { createClient, type SupabaseClient, type RealtimeChannel } from '@supabase/supabase-js'
 import { Rules } from '../core/rules'
-import { emptySnapshot, kindTable, type Snapshot, type Workspace, type EntryRef, type Attachment, type Expense, type Bill, type InboxItem, type StatementLine, type StatementMatch, type Claim, type ScheduledDraw, type CashBalance } from '../core/models'
+import { emptySnapshot, kindTable, type Snapshot, type Workspace, type EntryRef, type Attachment, type Expense, type Bill, type InboxItem, type StatementLine, type StatementMatch, type Claim, type ScheduledDraw, type CashBalance, type Material, type EntryTemplate } from '../core/models'
 import type { Backend, NewRecord, StatusChange, AllocationInput } from './types'
 import { BackendError } from './types'
 
@@ -92,14 +92,17 @@ export class SupabaseBackend implements Backend {
     const invites = await rows('invites').catch(() => [])
     // Tables from the 2026-11-24 migration; an older database without them still loads.
     const optional = (t: string) => rows(t).catch(() => [])
-    const [inbox, lines, matches, claims, draws, cash] = await Promise.all([optional('inbox_items'), optional('statement_lines'),
-      optional('statement_matches'), optional('claims'), optional('scheduled_draws'), optional('cash_balances')])
+    const [inbox, lines, matches, claims, draws, cash, shares, distributions, materials, templates] = await Promise.all([optional('inbox_items'), optional('statement_lines'),
+      optional('statement_matches'), optional('claims'), optional('scheduled_draws'), optional('cash_balances'),
+      optional('profit_shares'), optional('distributions'), optional('materials'), optional('entry_templates')])
     const audit = await this.wrap(() => this.client.from('audit_log').select('id,workspace_id,table_name,record_id,action,actor,at,reason')
       .eq('workspace_id', ws).order('id', { ascending: false }).limit(1000))
     Object.assign(s, {
       members, categories, projects, budgets, vendors, commitments, change_orders: changeOrders, bills, expenses, allocations,
       payments, reimbursements, reimbursement_items: items, contributions, proceeds, attachments, invites, audit,
       inbox_items: inbox, statement_lines: lines, statement_matches: matches, claims, scheduled_draws: draws, cash_balances: cash,
+      profit_shares: shares, distributions, materials: materials.map((m: any) => ({ ...m, qty_bought: Number(m.qty_bought), qty_used: Number(m.qty_used), qty_returned: Number(m.qty_returned) })),
+      entry_templates: templates,
     })
     return s
   }
@@ -136,6 +139,7 @@ export class SupabaseBackend implements Backend {
       }
       case 'contribution': await this.insertOnce('contributions', rec.row); break
       case 'proceeds': await this.insertOnce('sale_proceeds', rec.row); break
+      case 'distribution': await this.insertOnce('distributions', rec.row); break
       case 'commitment': await this.insertOnce('commitments', rec.row); break
       case 'changeOrder': await this.insertOnce('change_orders', rec.row); break
     }
@@ -244,6 +248,20 @@ export class SupabaseBackend implements Backend {
     const { created_by: _c, created_at: _a, ...row } = c
     await this.wrap(() => this.client.from('cash_balances').insert(row))
   }
+
+  async setProfitShares(workspace: string, projectId: string | null, shares: { partner_user_id: string; share_bps: number }[]) {
+    await this.wrap(() => this.client.rpc('set_profit_shares', { p_workspace: workspace, p_project: projectId, p_shares: shares }))
+  }
+  async saveMaterial(m: Material) {
+    const { created_by: _c, created_at: _a, updated_at: _u, ...row } = m
+    await this.wrap(() => this.client.from('materials').upsert(row, { onConflict: 'id' }))
+  }
+  async deleteMaterial(id: string) { await this.wrap(() => this.client.from('materials').delete().eq('id', id)) }
+  async saveTemplate(t: EntryTemplate) {
+    const { created_by: _c, created_at: _a, ...row } = t
+    await this.wrap(() => this.client.from('entry_templates').upsert(row, { onConflict: 'id' }))
+  }
+  async deleteTemplate(id: string) { await this.wrap(() => this.client.from('entry_templates').delete().eq('id', id)) }
 
   async fileURL(path: string) {
     const data = await this.wrap(() => this.client.storage.from('attachments').createSignedUrl(path, 3600))

@@ -46,6 +46,8 @@ export interface PartnerBalance {
   member: Member
   out_of_pocket_cents: Cents
   contributions_cents: Cents
+  /** Paid out to the partner from sales (return of capital and profit). */
+  distributions_cents: Cents
   reimbursed_cents: Cents
   pending_reimbursement_cents: Cents
   /** What the LLC still owes this partner. */
@@ -129,7 +131,7 @@ export class Ledger {
         case 'reimbursement': return a.reimbursement_id === ref.id
         case 'contribution': return a.contribution_id === ref.id
         case 'commitment': case 'changeOrder': return a.commitment_id === ref.id
-        case 'proceeds': return false
+        case 'proceeds': case 'distribution': return false
       }
     })
   }
@@ -144,6 +146,7 @@ export class Ledger {
       case 'reimbursement': return find(s.reimbursements)
       case 'contribution': return find(s.contributions)
       case 'proceeds': return find(s.proceeds)
+      case 'distribution': return find(s.distributions)
       case 'commitment': return find(s.commitments)
       case 'changeOrder': return find(s.change_orders)
     }
@@ -274,7 +277,7 @@ export class Ledger {
   /** With a project, only out-of-pocket and contributions are project-specific; reimbursements are paid to the partner overall. */
   partnerBalance(uid: string, pid?: string | null): PartnerBalance {
     const member = this.member(uid) ?? { workspace_id: this.s.workspace.id, user_id: uid, role: 'partner', display_name: 'Former partner' }
-    let oop = 0, contrib = 0, reimbursed = 0, pending = 0
+    let oop = 0, contrib = 0, reimbursed = 0, pending = 0, distributed = 0
     for (const e of this.s.expenses) if (e.paid_by_user_id === uid && !isVoid(e) && (!pid || e.project_id === pid)) oop += signedCents(e)
     for (const p of this.s.payments) {
       if (p.paid_by_user_id !== uid || isVoid(p)) continue
@@ -282,6 +285,7 @@ export class Ledger {
       oop += paidEffect(p)
     }
     for (const c of this.s.contributions) if (c.partner_user_id === uid && !isVoid(c) && (!pid || c.project_id === pid)) contrib += c.amount_cents
+    for (const d of this.s.distributions) if (d.partner_user_id === uid && !isVoid(d) && (!pid || d.project_id === pid)) distributed += d.amount_cents
     if (!pid) {
       for (const r of this.s.reimbursements) {
         if (r.partner_user_id !== uid) continue
@@ -290,7 +294,7 @@ export class Ledger {
       }
     }
     return {
-      member, out_of_pocket_cents: oop, contributions_cents: contrib, reimbursed_cents: reimbursed,
+      member, out_of_pocket_cents: oop, contributions_cents: contrib, distributions_cents: distributed, reimbursed_cents: reimbursed,
       pending_reimbursement_cents: pending, owed_cents: oop - reimbursed,
     }
   }
@@ -312,7 +316,7 @@ export class Ledger {
         subtitle: join([e.is_refund ? 'Refund' : 'Receipt', this.project(e.project_id)?.nickname, this.payerName(e.paid_by_user_id)]),
         amount_cents: signedCents(e), project_id: e.project_id, vendor_id: e.vendor_id, partner_id: e.paid_by_user_id ?? null,
         invoice_number: e.reference, category_ids: this.allocationsForExpense(e.id).map((a) => a.category_id),
-        status: isVoid(e) ? VOID : { text: 'Paid', tone: 'good' }, created_by: e.created_by, attachment_count: count('expense', e.id),
+        status: isVoid(e) ? VOID : { text: 'Paid', tone: 'good' }, created_by: e.created_by, attachment_count: count('expense', e.id), notes: e.description,
       })
     }
     for (const b of this.s.bills) {
@@ -322,7 +326,7 @@ export class Ledger {
           b.due_date ? `due ${Days.display(b.due_date)}` : null]),
         amount_cents: b.total_cents, project_id: b.project_id, vendor_id: b.vendor_id, partner_id: null,
         invoice_number: b.invoice_number, category_ids: this.allocationsForBill(b.id).map((a) => a.category_id),
-        status: this.billStatus(b), created_by: b.created_by, attachment_count: count('bill', b.id), due_date: b.due_date,
+        status: this.billStatus(b), created_by: b.created_by, attachment_count: count('bill', b.id), due_date: b.due_date, notes: b.description,
       })
     }
     for (const p of this.s.payments) {
@@ -345,7 +349,7 @@ export class Ledger {
         ref: { kind: 'reimbursement', id: r.id }, date: r.paid_date ?? r.request_date, title: `Reimburse ${this.payerName(r.partner_user_id)}`,
         subtitle: 'Reimbursement · not a project cost', amount_cents: r.amount_cents, project_id: null, vendor_id: null,
         partner_id: r.partner_user_id, invoice_number: r.reference, category_ids: [], status: st, created_by: r.created_by,
-        attachment_count: count('reimbursement', r.id),
+        attachment_count: count('reimbursement', r.id), notes: r.notes,
       })
     }
     for (const c of this.s.contributions) {
@@ -353,14 +357,22 @@ export class Ledger {
         ref: { kind: 'contribution', id: c.id }, date: c.contribution_date, title: `${this.payerName(c.partner_user_id)} contribution`,
         subtitle: join(['Capital contribution', this.project(c.project_id)?.nickname]), amount_cents: c.amount_cents,
         project_id: c.project_id, vendor_id: null, partner_id: c.partner_user_id, invoice_number: c.reference, category_ids: [],
-        status: recorded(c), created_by: c.created_by, attachment_count: count('contribution', c.id),
+        status: recorded(c), created_by: c.created_by, attachment_count: count('contribution', c.id), notes: c.notes,
       })
     }
     for (const p of this.s.proceeds) {
       out.push({
         ref: { kind: 'proceeds', id: p.id }, date: p.sale_date, title: `Sale of ${this.project(p.project_id)?.nickname ?? 'property'}`,
         subtitle: 'Sale proceeds', amount_cents: p.amount_cents, project_id: p.project_id, vendor_id: null, partner_id: null,
-        invoice_number: '', category_ids: [], status: recorded(p), created_by: p.created_by, attachment_count: 0,
+        invoice_number: '', category_ids: [], status: recorded(p), created_by: p.created_by, attachment_count: 0, notes: p.notes,
+      })
+    }
+    for (const d of this.s.distributions) {
+      out.push({
+        ref: { kind: 'distribution', id: d.id }, date: d.distribution_date, title: `Distribution to ${this.payerName(d.partner_user_id)}`,
+        subtitle: join(['Paid out to a partner', this.project(d.project_id)?.nickname]), amount_cents: d.amount_cents,
+        project_id: d.project_id, vendor_id: null, partner_id: d.partner_user_id, invoice_number: d.reference, category_ids: [],
+        status: recorded(d), created_by: d.created_by, attachment_count: 0, notes: d.notes,
       })
     }
     for (const c of this.s.commitments) {
@@ -370,7 +382,7 @@ export class Ledger {
         subtitle: join(['Commitment', this.project(c.project_id)?.nickname, `${Money.format(st.unbilled_cents, false)} not billed yet`]),
         amount_cents: st.revised_cents, project_id: c.project_id, vendor_id: c.vendor_id, partner_id: null, invoice_number: '',
         category_ids: [c.category_id], status: isVoid(c) ? VOID : { text: 'Committed', tone: 'neutral' }, created_by: c.created_by,
-        attachment_count: count('commitment', c.id),
+        attachment_count: count('commitment', c.id), notes: c.description,
       })
     }
     const commitments = byId(this.s.commitments)
@@ -418,7 +430,7 @@ export class Ledger {
       if (!q) return true
       const hay = [e.title, e.subtitle, e.invoice_number, Money.plain(e.amount_cents), Money.format(e.amount_cents),
         this.project(e.project_id)?.nickname ?? '', this.vendor(e.vendor_id)?.name ?? '', this.payerName(e.partner_id),
-        e.status.text, e.date, ...e.category_ids.map((c) => this.category(c)?.name ?? '')]
+        e.status.text, e.date, e.notes ?? '', ...e.category_ids.map((c) => this.category(c)?.name ?? '')]
       return hay.join(' ').toLowerCase().includes(q)
     })
   }

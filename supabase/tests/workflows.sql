@@ -267,4 +267,42 @@ select pg_temp.eq('Outsider sees no cash', (select count(*) from public.cash_bal
 select pg_temp.must_fail(format($q$insert into public.claims (workspace_id, item_kind, item_id) values (%L, 'bill', gen_random_uuid())$q$, ws), 'row-level security') from t;
 select pg_temp.login(:'B');
 
+\echo '== Sale details, profit shares and distributions'
+select pg_temp.login(:'A');
+select pg_temp.must_fail(format($q$insert into public.sale_proceeds (workspace_id, project_id, amount_cents, gross_price_cents, selling_costs_cents) values (%L, %L, 100, 1000, 50)$q$, ws, oak), 'sale_proceeds_net_check') from t;
+insert into public.sale_proceeds (workspace_id, project_id, amount_cents, gross_price_cents, selling_costs_cents, loan_payoff_cents, sale_date)
+select ws, oak, 39480000, 42000000, 2520000, 25000000, '2026-11-24' from t;
+select pg_temp.must_fail(format($q$select public.set_profit_shares(%L, null, '[{"partner_user_id": "%s", "share_bps": 5000}, {"partner_user_id": "%s", "share_bps": 4000}]'::jsonb); set constraints all immediate$q$, ws, :'A', :'B'), 'add up to 100%') from t;
+select public.set_profit_shares(ws, null, format('[{"partner_user_id": "%s", "share_bps": 5000}, {"partner_user_id": "%s", "share_bps": 2500}, {"partner_user_id": "%s", "share_bps": 2500}]', :'A', :'B', :'C')::jsonb) from t;
+select pg_temp.eq('Default split saved', (select sum(share_bps) from public.profit_shares where project_id is null), 10000);
+select public.set_profit_shares(ws, oak, format('[{"partner_user_id": "%s", "share_bps": 3334}, {"partner_user_id": "%s", "share_bps": 3333}, {"partner_user_id": "%s", "share_bps": 3333}]', :'A', :'B', :'C')::jsonb) from t;
+select pg_temp.eq('Project override saved beside the default', (select count(*) from public.profit_shares), 6);
+select pg_temp.must_fail(format($q$select public.set_profit_shares(%L, null, '[{"partner_user_id": "%s", "share_bps": 10000}]'::jsonb)$q$, ws, :'D'), 'not a partner') from t;
+insert into public.distributions (workspace_id, partner_user_id, project_id, amount_cents, payment_method) select ws, :'B', oak, 5000000, 'wire' from t;
+select pg_temp.must_fail($q$update public.distributions set amount_cents = 1$q$, 'can''t be edited');
+select pg_temp.must_fail($q$update public.distributions set status = 'void'$q$, 'reason');
+update public.distributions set status = 'void', void_reason = 'Wrong partner';
+delete from public.distributions;
+select pg_temp.eq('Distributions are voided, never deleted', (select count(*) from public.distributions), 1);
+select pg_temp.must_fail(format($q$insert into public.distributions (workspace_id, partner_user_id, amount_cents) values (%L, %L, 100)$q$, ws, :'D'), 'not a partner') from t;
+
+\echo '== Materials and templates'
+insert into public.materials (id, workspace_id, project_id, name, unit, qty_bought, qty_used, unit_cost_cents)
+select '70000000-0000-0000-0000-000000000001', ws, oak, 'LVP flooring', 'box', 40, 34, 5899 from t;
+select pg_temp.must_fail($q$update public.materials set qty_used = 50 where id = '70000000-0000-0000-0000-000000000001'$q$, 'check');
+select pg_temp.login(:'B');
+update public.materials set qty_returned = 4, location = 'Pine Rd garage' where id = '70000000-0000-0000-0000-000000000001';
+select pg_temp.eq('Partner B updated returns; creator kept', (select (qty_returned = 4 and created_by = :'A')::int from public.materials), 1);
+insert into public.entry_templates (workspace_id, name, kind, project_id, vendor_id, category_id, amount_cents, repeat, next_due)
+select ws, 'Builder''s risk insurance', 'bill', oak, home_depot, materials, 21000, 'monthly', '2026-12-01' from t;
+select pg_temp.must_fail(format($q$insert into public.entry_templates (workspace_id, name, kind, repeat) values (%L, 'x', 'bill', 'monthly')$q$, ws), 'check') from t;
+update public.entry_templates set next_due = '2027-01-01';
+delete from public.materials;
+select pg_temp.eq('Materials can be removed', (select count(*) from public.materials), 0);
+select pg_temp.login(:'D');
+select pg_temp.eq('Outsider sees no distributions', (select count(*) from public.distributions), 0);
+select pg_temp.eq('Outsider sees no templates', (select count(*) from public.entry_templates), 0);
+select pg_temp.eq('Outsider sees no profit shares', (select count(*) from public.profit_shares), 0);
+select pg_temp.login(:'B');
+
 reset role;

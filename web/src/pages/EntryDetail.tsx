@@ -25,11 +25,13 @@ export function EntryDetailPage() {
       <div className="grid2">
         <div className="stack"><Details refx={ref} /></div>
         <div className="stack">
-          <Section title="Documents" footer="Adding a document never changes amounts or balances."
-            action={<button className="btn link" onClick={() => app.open({ type: 'attach', target: { kind: 'record', ref } })}><Icon name="clip" size={14} /> Attach</button>}>
-            {l.attachmentsFor(ref).length === 0 && <div className="empty">No documents yet.</div>}
-            {l.attachmentsFor(ref).map((a) => <AttachmentRow key={a.id} a={a} />)}
-          </Section>
+          {ref.kind !== 'proceeds' && ref.kind !== 'distribution' && (
+            <Section title="Documents" footer="Adding a document never changes amounts or balances."
+              action={<button className="btn link" onClick={() => app.open({ type: 'attach', target: { kind: 'record', ref } })}><Icon name="clip" size={14} /> Attach</button>}>
+              {l.attachmentsFor(ref).length === 0 && <div className="empty">No documents yet.</div>}
+              {l.attachmentsFor(ref).map((a) => <AttachmentRow key={a.id} a={a} />)}
+            </Section>
+          )}
           <History refx={ref} />
         </div>
       </div>
@@ -58,6 +60,8 @@ function Actions({ refx: ref }: { refx: EntryRef }) {
       {ref.kind === 'bill' && status === 'posted' && l.balance(ref.id).outstanding_cents > 0 && (
         <button className="btn primary" onClick={() => app.open({ type: 'payment', billId: ref.id })}><Icon name="cash" />Record payment</button>
       )}
+      {(ref.kind === 'expense' || ref.kind === 'bill') && <button className="btn" onClick={() => { const d = app.againDraft(ref); if (d) app.open({ type: 'transaction', draft: d }) }} title="A new one with the same vendor, project, amount and categories, dated today">Add again</button>}
+      {(ref.kind === 'expense' || ref.kind === 'bill') && <button className="btn" onClick={() => app.open({ type: 'template', from: ref })} title="Save it as a template, optionally repeating">Save as template</button>}
       {status !== 'void' && <button className="btn danger" onClick={() => app.open({ type: 'void', ref })}>Void…</button>}
     </div>
   )
@@ -190,7 +194,27 @@ function Details({ refx: ref }: { refx: EntryRef }) {
     case 'proceeds': {
       const p = s.proceeds.find((x) => x.id === ref.id)
       if (!p) return null
-      return <>{voidNote(p)}<Section>{projectRow(p.project_id)}<KV k="Sale date">{Days.display(p.sale_date)}</KV>{p.notes && <KV k="Notes">{p.notes}</KV>}</Section></>
+      return <>{voidNote(p)}<Section footer="Net proceeds = sale price − selling costs. The split and payouts are on the project's Sale and split tab.">
+        {projectRow(p.project_id)}<KV k="Sale date">{Days.display(p.sale_date)}</KV>
+        {p.gross_price_cents != null && <MoneyKV label="Sale price" cents={p.gross_price_cents} />}
+        {p.selling_costs_cents != null && <MoneyKV label="Selling costs" cents={p.selling_costs_cents} />}
+        {p.loan_payoff_cents != null && <MoneyKV label="Loan paid off at closing" cents={p.loan_payoff_cents} />}
+        {p.notes && <KV k="Notes">{p.notes}</KV>}</Section></>
+    }
+    case 'distribution': {
+      const d = s.distributions.find((x) => x.id === ref.id)
+      if (!d) return null
+      return <>
+        {voidNote(d)}
+        <Section footer="Paid out to a partner from a sale (capital back and profit). Doesn't change what the LLC owes for receipts.">
+          <KV k="Partner" to={`/partners/${d.partner_user_id}`}>{l.payerName(d.partner_user_id)}</KV>
+          {d.project_id ? projectRow(d.project_id) : <KV k="Project">LLC-wide</KV>}
+          <KV k="Date">{Days.display(d.distribution_date)}</KV>
+          <KV k="Method">{methodLabel(d.payment_method)}</KV>
+          {d.reference && <KV k="Reference">{d.reference}</KV>}
+          {d.notes && <KV k="Notes">{d.notes}</KV>}
+        </Section>
+      </>
     }
     case 'commitment': {
       const c = s.commitments.find((x) => x.id === ref.id)

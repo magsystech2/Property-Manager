@@ -179,5 +179,23 @@ export function demoSnapshot(today: Day = Days.today): Snapshot {
     line('Madhan card 4421', partnerA, -2, 'HOME DEPOT TOOL RENTAL #6512', 12_000),
     line('LLC checking 0199', null, -9, 'CITY WATER UTIL AUTOPAY', 8_820),
   ]
+  const material = (p: typeof oak, name: string, unit: string, bought: number, used: number, returned: number, cost: Cents, location = '') => ({
+    id: uuid(), workspace_id: ws, project_id: p.id, name, unit, qty_bought: bought, qty_used: used, qty_returned: returned, unit_cost_cents: cost,
+    location, notes: '', created_by: partnerB, created_at: ts(-10), updated_at: ts(-2),
+  })
+  s.materials = [
+    material(oak, 'LVP flooring', 'box', 40, 34, 0, 5_899, 'Oak St garage'),
+    material(oak, 'Subway tile 3x6', 'box', 18, 15, 2, 3_450, 'Oak St garage'),
+    material(oak, 'Drywall 4x8 1/2"', 'sheet', 60, 60, 0, 1_598),
+    material(pine, '2x4x8 studs', 'each', 400, 310, 0, 389, 'Pine Rd shed'),
+  ]
+  s.entry_templates = [
+    { id: uuid(), workspace_id: ws, name: 'Oak St builder’s risk insurance', kind: 'receipt', project_id: oak.id, vendor_id: title.id, category_id: cat('Insurance'),
+      amount_cents: 21_000, paid_by_user_id: null, payment_method: 'ach', description: 'Monthly premium', repeat: 'monthly', next_due: d(3), active: true, created_by: partnerA, created_at: ts(-40) },
+    { id: uuid(), workspace_id: ws, name: 'Oak St water', kind: 'receipt', project_id: oak.id, vendor_id: water.id, category_id: cat('Utilities'),
+      amount_cents: null, paid_by_user_id: null, payment_method: 'ach', description: 'Water and sewer', repeat: 'monthly', next_due: d(21), active: true, created_by: partnerA, created_at: ts(-40) },
+    { id: uuid(), workspace_id: ws, name: 'Home Depot run, Pine Rd', kind: 'receipt', project_id: pine.id, vendor_id: homeDepot.id, category_id: cat('Materials'),
+      amount_cents: null, paid_by_user_id: partnerA, payment_method: 'card', description: '', repeat: 'none', next_due: null, active: true, created_by: partnerA, created_at: ts(-30) },
+  ]
   return s
 }

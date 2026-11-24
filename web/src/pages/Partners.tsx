@@ -1,3 +1,4 @@
+import { profitShares } from '../core/settlement'
 import { Link, useParams } from 'react-router-dom'
 import { useStore } from '../store'
 import { Days, Money } from '../core/money'
@@ -7,18 +8,23 @@ import { recordsLink } from './Activity'
 export function PartnersPage() {
   const app = useStore()
   const balances = app.ledger.partnerBalances()
+  const split = profitShares(app.ledger, null)
+  const splitText = split.source === 'equal' ? 'Equal' : split.shares.map((x) => `${app.ledger.payerName(x.partner_user_id)} ${x.share_bps / 100}%`).join(', ')
   return (
     <div className="stack">
-      <PageHead title="Partners" sub="Every balance comes from recorded transactions only. Nothing assumes equal shares." />
+      <PageHead title="Partners" sub="Every balance comes from recorded transactions only. The profit split is used only when a project is sold." />
       <div className="grid2">
         <Section title="Across the LLC">
           <MoneyKV label="LLC owes partners" cents={balances.reduce((a, b) => a + Math.max(b.owed_cents, 0), 0)} bold />
           <MoneyKV label="Capital contributed" cents={balances.reduce((a, b) => a + b.contributions_cents, 0)} />
           <MoneyKV label="Reimbursement requests pending" cents={balances.reduce((a, b) => a + b.pending_reimbursement_cents, 0)} />
+          <MoneyKV label="Distributed from sales" cents={balances.reduce((a, b) => a + b.distributions_cents, 0)} />
         </Section>
         <Section title="Actions">
           <button className="item" onClick={() => app.open({ type: 'reimbursement' })}><Icon name="users" /><span className="grow">Reimburse a partner</span></button>
           <button className="item" onClick={() => app.open({ type: 'contribution', partnerId: app.me })}><Icon name="bank" /><span className="grow">Add contribution</span></button>
+          <button className="item" onClick={() => app.open({ type: 'shares', projectId: null })}><Icon name="chart" /><span className="grow">Default profit split</span><span className="small muted">{splitText}</span></button>
+          <Link className="item" to="/reports"><Icon name="chart" /><span className="grow">Partner reports</span></Link>
           <Link className="item" to="/export"><Icon name="download" /><span className="grow">Export CSV</span></Link>
           <Link className="item" to="/settings"><Icon name="settings" /><span className="grow">Settings, members and invites</span></Link>
         </Section>
@@ -73,6 +79,7 @@ export function PartnerDetailPage() {
           <MoneyKV label="LLC still owes" cents={b.owed_cents} bold />
           <MoneyKV label="Pending reimbursement requests" cents={b.pending_reimbursement_cents} />
           <MoneyKV label="Capital contributions" cents={b.contributions_cents} />
+          {b.distributions_cents > 0 && <MoneyKV label="Distributions from sales" cents={b.distributions_cents} />}
         </Section>
         <Section title="By property">
           {l.s.projects.slice().sort((x, y) => x.nickname.localeCompare(y.nickname)).map((p) => {

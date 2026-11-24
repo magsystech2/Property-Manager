@@ -5,6 +5,7 @@ import { isActiveProject, projectTypeLabel, projectStatusLabel, type Project } f
 import { EntryList, Icon, MoneyText, PageHead, Section, Tile } from '../ui/common'
 import { recordsLink } from './Activity'
 import { cashPlan, missingReceipts } from '../core/planning'
+import { dueTemplates } from './Reports'
 
 /** Chips for the work waiting this week, so phone users reach the review screens from Home. */
 function ThisWeek() {
@@ -14,12 +15,15 @@ function ThisWeek() {
   const unmatched = l.s.statement_lines.filter((x) => x.status === 'unmatched').length
   const missing = missingReceipts(l).filter((m) => m.owner === app.me).length
   const plan = cashPlan(l)
+  const due = dueTemplates(l.s.entry_templates, l.today).length
   const chips: [string, string, string, boolean][] = [
     ['/review', 'check', 'Weekly review', false],
     ['/inbox', 'tray', `${inbox} in the inbox`, inbox > 0],
     ['/statements', 'bank', `${unmatched} charges to match`, unmatched > 0],
     ['/missing', 'receipt', `${missing} missing receipts of yours`, missing > 0],
     ['/cash', 'cash', plan.shortfall ? `Cash short ${Money.format(plan.shortfall.short_by_cents, false)} by ${new Date(plan.shortfall.date + 'T00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}` : `${Money.format(plan.total_cents, false)} due in 30 days`, !!plan.shortfall],
+    ['/recurring', 'repeat', due ? `${due} recurring cost${due === 1 ? '' : 's'} due` : 'Recurring', due > 0],
+    ['/reports', 'chart', 'Reports', false],
   ]
   return (
     <div className="chips">

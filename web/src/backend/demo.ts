@@ -4,7 +4,7 @@ import { Ledger } from '../core/ledger'
 import { Rules, LedgerError } from '../core/rules'
 import { demoSnapshot, DemoIds } from '../core/demoData'
 import { Days } from '../core/money'
-import { emptySnapshot, type Snapshot, type EntryRef, type Attachment, type InboxItem, type StatementLine, type StatementMatch, type Claim, type ScheduledDraw, type CashBalance } from '../core/models'
+import { emptySnapshot, type Snapshot, type EntryRef, type Attachment, type InboxItem, type StatementLine, type StatementMatch, type Claim, type ScheduledDraw, type CashBalance, type Material, type EntryTemplate } from '../core/models'
 import type { Backend, NewRecord, StatusChange, AllocationInput } from './types'
 import { uuid } from '../core/money'
 
@@ -124,8 +124,17 @@ export class DemoBackend implements Backend {
       case 'proceeds':
         if (s.proceeds.some((x) => x.id === rec.row.id)) return
         if (!(rec.row.amount_cents > 0)) throw new LedgerError('Enter an amount greater than zero.')
+        if (rec.row.gross_price_cents != null && rec.row.amount_cents !== rec.row.gross_price_cents - (rec.row.selling_costs_cents ?? 0))
+          throw new LedgerError('Net proceeds must equal the sale price minus selling costs.')
         s.proceeds.push({ ...rec.row, status: 'posted', ...stamp })
         this.audit('sale_proceeds', rec.row.id, 'insert')
+        break
+      case 'distribution':
+        if (s.distributions.some((x) => x.id === rec.row.id)) return
+        if (!(rec.row.amount_cents > 0)) throw new LedgerError('Enter an amount greater than zero.')
+        this.checkPartner(rec.row.partner_user_id)
+        s.distributions.push({ ...rec.row, status: 'posted', ...stamp })
+        this.audit('distributions', rec.row.id, 'insert')
         break
       case 'commitment':
         if (s.commitments.some((x) => x.id === rec.row.id)) return
@@ -157,6 +166,7 @@ export class DemoBackend implements Backend {
         case 'reimbursement': return s.reimbursements
         case 'contribution': return s.contributions
         case 'proceeds': return s.proceeds
+        case 'distribution': return s.distributions
         case 'commitment': return s.commitments
         case 'changeOrder': return s.change_orders
       }
@@ -350,6 +360,51 @@ export class DemoBackend implements Backend {
   }
   async addCashBalance(c: CashBalance) {
     this.snapshot.cash_balances.push({ ...c, created_by: this.actingAs, created_at: this.now() })
+    this.changed()
+  }
+
+  async setProfitShares(_ws: string, projectId: string | null, shares: { partner_user_id: string; share_bps: number }[]) {
+    for (const x of shares) this.checkPartner(x.partner_user_id)
+    const total = shares.reduce((a, x) => a + x.share_bps, 0)
+    if (shares.length && total !== 10000) throw new LedgerError(`Profit shares must add up to 100%. These add up to ${(total / 100).toFixed(2)}%.`)
+    if (shares.some((x) => x.share_bps < 0 || x.share_bps > 10000)) throw new LedgerError('Each share must be between 0% and 100%.')
+    const ws = this.snapshot.workspace.id
+    this.snapshot.profit_shares = this.snapshot.profit_shares.filter((x) => (x.project_id ?? null) !== projectId)
+      .concat(shares.map((x) => ({ id: uuid(), workspace_id: ws, project_id: projectId, ...x })))
+    this.audit('profit_shares', projectId ?? ws, 'update')
+    this.changed()
+  }
+  async saveMaterial(m: Material) {
+    if (!m.name.trim()) throw new LedgerError('Name the material.')
+    if ([m.qty_bought, m.qty_used, m.qty_returned].some((q) => !(q >= 0))) throw new LedgerError('Quantities can’t be negative.')
+    if (m.qty_used + m.qty_returned > m.qty_bought + 1e-9) throw new LedgerError('Used plus returned can’t be more than what was bought.')
+    const list = this.snapshot.materials
+    const i = list.findIndex((x) => x.id === m.id)
+    if (i >= 0) list[i] = { ...m, created_by: list[i].created_by, created_at: list[i].created_at, updated_at: this.now() }
+    else list.push({ ...m, created_by: this.actingAs, created_at: this.now(), updated_at: this.now() })
+    this.audit('materials', m.id, i >= 0 ? 'update' : 'insert')
+    this.changed()
+  }
+  async deleteMaterial(id: string) {
+    this.snapshot.materials = this.snapshot.materials.filter((x) => x.id !== id)
+    this.audit('materials', id, 'delete')
+    this.changed()
+  }
+  async saveTemplate(t: EntryTemplate) {
+    if (!t.name.trim()) throw new LedgerError('Name the template.')
+    if (t.repeat !== 'none' && !t.next_due) throw new LedgerError('Pick when it’s next due.')
+    if (t.amount_cents != null && !(t.amount_cents > 0)) throw new LedgerError('Enter an amount greater than zero, or leave it blank.')
+    this.checkPartner(t.paid_by_user_id)
+    const list = this.snapshot.entry_templates
+    const i = list.findIndex((x) => x.id === t.id)
+    if (i >= 0) list[i] = { ...t, created_by: list[i].created_by, created_at: list[i].created_at }
+    else list.push({ ...t, created_by: this.actingAs, created_at: this.now() })
+    this.audit('entry_templates', t.id, i >= 0 ? 'update' : 'insert')
+    this.changed()
+  }
+  async deleteTemplate(id: string) {
+    this.snapshot.entry_templates = this.snapshot.entry_templates.filter((x) => x.id !== id)
+    this.audit('entry_templates', id, 'delete')
     this.changed()
   }
 

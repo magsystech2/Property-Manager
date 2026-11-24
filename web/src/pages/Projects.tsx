@@ -8,6 +8,7 @@ import { isActiveProject, projectStatusLabel, projectTypeLabel, type EntryRef } 
 import { AttachmentRow, EntryList, Icon, KV, MoneyKV, MoneyText, PageHead, Section, Segmented, recordPath } from '../ui/common'
 import { ProjectRow } from './Home'
 import { ProjectForecast } from './Forecast'
+import { CostBasisCard, ProjectMaterials, ProjectSale } from './Sale'
 import { recordsLink } from './Activity'
 
 export function ProjectsPage() {
@@ -31,7 +32,7 @@ export function ProjectsPage() {
   )
 }
 
-type Tab = 'overview' | 'budget' | 'forecast' | 'activity' | 'vendors' | 'files'
+type Tab = 'overview' | 'budget' | 'forecast' | 'sale' | 'materials' | 'activity' | 'vendors' | 'files'
 
 export function ProjectDetailPage() {
   const { id = '' } = useParams()
@@ -49,10 +50,12 @@ export function ProjectDetailPage() {
           <Link className="btn" to={`/export?project=${p.id}`}><Icon name="download" />CSV</Link>
         </div>
       </PageHead>
-      <Segmented value={tab} onChange={setTab} options={[['overview', 'Overview'], ['budget', 'Budget'], ['forecast', 'Forecast'], ['activity', 'Activity'], ['vendors', 'Vendors'], ['files', 'Files']]} />
+      <Segmented value={tab} onChange={setTab} options={[['overview', 'Overview'], ['budget', 'Budget'], ['forecast', 'Forecast'], ['sale', 'Sale and split'], ['materials', 'Materials'], ['activity', 'Activity'], ['vendors', 'Vendors'], ['files', 'Files']]} />
       {tab === 'overview' && <Overview pid={p.id} />}
       {tab === 'budget' && <Budget pid={p.id} />}
       {tab === 'forecast' && <ProjectForecast pid={p.id} />}
+      {tab === 'sale' && <ProjectSale pid={p.id} />}
+      {tab === 'materials' && <ProjectMaterials pid={p.id} />}
       {tab === 'activity' && <Section><EntryList entries={l.entries().filter((e) => e.project_id === p.id)} empty="No transactions yet." /></Section>}
       {tab === 'vendors' && <ProjectVendors pid={p.id} />}
       {tab === 'files' && <ProjectFiles pid={p.id} />}
@@ -81,13 +84,7 @@ function Overview({ pid }: { pid: string }) {
           <MoneyKV label="Projected spend" cents={t.projected_cents} bold />
           <MoneyKV label={t.remaining_cents < 0 ? 'Over budget' : 'Remaining budget'} cents={t.remaining_cents} bold tone={t.remaining_cents < 0 ? 'bad' : undefined} />
         </Section>
-        {(t.proceeds_cents > 0 || p.status === 'sold') && (
-          <Section title="Sale" footer="Estimate only: recorded proceeds minus recorded and committed costs. Profit splits and taxes are not handled here.">
-            {link('Sale proceeds', t.proceeds_cents, l.s.proceeds.filter((x) => x.project_id === pid).map((x) => ({ kind: 'proceeds' as const, id: x.id })), 'Recorded sale proceeds. Kept separate from partner contributions.')}
-            <MoneyKV label="Projected costs" cents={t.projected_cents} />
-            <MoneyKV label="Profit estimate" cents={t.profit_estimate_cents} bold />
-          </Section>
-        )}
+        <CostBasisCard pid={pid} />
         <Section title="Details">
           <KV k="Type">{projectTypeLabel(p)}</KV>
           <KV k="Status">{projectStatusLabel(p)}</KV>
@@ -129,7 +126,7 @@ function Overview({ pid }: { pid: string }) {
         <Section title="Quick actions">
           <button className="item" onClick={() => app.open({ type: 'transaction', draft: newDraft('receipt', pid) })}><Icon name="receipt" /><span className="grow">Add expense for this project</span></button>
           <button className="item" onClick={() => app.open({ type: 'transaction', draft: newDraft('bill', pid) })}><Icon name="doc" /><span className="grow">Add bill for this project</span></button>
-          <button className="item" onClick={() => app.open({ type: 'proceeds', projectId: pid })}><Icon name="cash" /><span className="grow">Record sale proceeds</span></button>
+          <button className="item" onClick={() => app.open({ type: 'proceeds', projectId: pid })}><Icon name="cash" /><span className="grow">Record the sale</span></button>
           <button className="item" onClick={() => app.open({ type: 'contribution', projectId: pid, partnerId: app.me })}><Icon name="bank" /><span className="grow">Add contribution for this project</span></button>
         </Section>
       </div>

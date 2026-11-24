@@ -18,6 +18,7 @@ import { InboxPage } from './pages/Inbox'
 import { StatementsPage } from './pages/Statements'
 import { ReviewPage, MissingPage } from './pages/Review'
 import { CashPage } from './pages/Cash'
+import { RecurringPage, ReportsPage, dueTemplates } from './pages/Reports'
 import { ModalHost } from './forms/ModalHost'
 
 export default function App() {
@@ -66,6 +67,7 @@ const addActions: { label: string; desc: string; icon: string; open: (projectId:
   { label: 'Add contribution', desc: 'Capital a partner put in', icon: 'bank', open: (pid) => store.open({ type: 'contribution', partnerId: store.me, projectId: pid }) },
   { label: 'Reimburse a partner', desc: 'Pay back personal spending', icon: 'users', open: () => store.open({ type: 'reimbursement' }) },
   { label: 'Add commitment', desc: 'A contract or agreed quote', icon: 'sign', open: (pid) => store.open({ type: 'commitment', projectId: pid }) },
+  { label: 'Recurring cost', desc: 'Insurance, utilities, dumpster: due ones and templates', icon: 'repeat', open: () => {}, to: '/recurring' },
   { label: 'Bulk upload', desc: 'Many receipts and bills from a spreadsheet', icon: 'tray', open: () => {}, to: '/import' },
 ]
 
@@ -106,6 +108,7 @@ function Shell() {
   const demo = app.demo
   const inboxCount = app.ledger.s.inbox_items.filter((i) => i.status === 'new').length
   const unmatchedCount = app.ledger.s.statement_lines.filter((x) => x.status === 'unmatched').length
+  const dueCount = dueTemplates(app.ledger.s.entry_templates, app.ledger.today).length
   return (
     <div className="app">
       <aside className="sidebar">
@@ -120,6 +123,8 @@ function Shell() {
         <NavLink to="/inbox" className="nav-link"><Icon name="tray" />Inbox{inboxCount ? <span className="nav-count">{inboxCount}</span> : null}</NavLink>
         <NavLink to="/statements" className="nav-link"><Icon name="bank" />Statements{unmatchedCount ? <span className="nav-count">{unmatchedCount}</span> : null}</NavLink>
         <NavLink to="/cash" className="nav-link"><Icon name="cash" />Cash needed</NavLink>
+        <NavLink to="/reports" className="nav-link"><Icon name="chart" />Reports</NavLink>
+        <NavLink to="/recurring" className="nav-link"><Icon name="repeat" />Recurring{dueCount ? <span className="nav-count">{dueCount}</span> : null}</NavLink>
         <NavLink to="/vendors" className="nav-link"><Icon name="store" />Vendors</NavLink>
         <NavLink to="/import" className="nav-link"><Icon name="list" />Bulk upload</NavLink>
         <NavLink to="/export" className="nav-link"><Icon name="download" />Export CSV</NavLink>
@@ -163,6 +168,8 @@ function Shell() {
             <Route path="/review" element={<ReviewPage />} />
             <Route path="/missing" element={<MissingPage />} />
             <Route path="/cash" element={<CashPage />} />
+            <Route path="/reports" element={<ReportsPage />} />
+            <Route path="/recurring" element={<RecurringPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </main>

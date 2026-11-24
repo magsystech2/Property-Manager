@@ -320,41 +320,6 @@ export function ChangeOrderForm({ commitmentId, onClose }: { commitmentId: strin
   )
 }
 
-export function ProceedsForm({ projectId, onClose }: { projectId: string } & Close) {
-  const app = useStore()
-  const [id] = useState(uuid())
-  const [amount, setAmount] = useState('')
-  const [date, setDate] = useState(Days.today)
-  const [notes, setNotes] = useState('')
-  const [markSold, setMarkSold] = useState(true)
-  const [busy, setBusy] = useState(false)
-  const p = app.ledger.project(projectId)
-  const cents = Money.parse(amount) ?? 0
-  const save = async () => {
-    const ws = app.workspace?.id
-    if (!ws) return
-    setBusy(true)
-    if (await app.insert({ type: 'proceeds', row: { id, workspace_id: ws, project_id: projectId, amount_cents: cents, sale_date: date, notes, status: 'posted', client_id: id } }, 'Sale proceeds saved')) {
-      const cur = app.ledger.project(projectId)
-      if (markSold && cur && cur.status !== 'sold') await app.saveProject({ ...cur, status: 'sold' })
-      onClose()
-    }
-    setBusy(false)
-  }
-  return (
-    <ModalShell title="Sale proceeds" onClose={onClose} onSave={save} saveTitle="Save sale proceeds" canSave={cents > 0} busy={busy}>
-      <div className="panel">
-        <div className="note">Project: {p?.nickname}</div>
-        <Field label="Net proceeds"><AmountInput big value={amount} onChange={setAmount} autoFocus /></Field>
-        <Field label="Sale date"><input type="date" value={date} onChange={(e) => setDate(e.target.value)} /></Field>
-        <Field label="Notes"><textarea value={notes} placeholder="Closing statement details" onChange={(e) => setNotes(e.target.value)} /></Field>
-        {p?.status !== 'sold' && <label className="check"><input type="checkbox" checked={markSold} onChange={(e) => setMarkSold(e.target.checked)} />Mark the project as sold</label>}
-        <div className="note">Stored separately from partner contributions. Used for the project's profit estimate.</div>
-      </div>
-    </ModalShell>
-  )
-}
-
 // ---------------------------------------------------------------------------
 // Project, budget, vendor
 // ---------------------------------------------------------------------------

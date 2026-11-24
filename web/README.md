@@ -22,6 +22,18 @@ Click **Try the demo** to use sample data kept in that browser only. The purple 
 
 **Bulk upload** (sidebar, or Add → Bulk upload) adds many receipts and bills from a spreadsheet. Download the template, fill it in with Excel, Numbers or Google Sheets, save it as CSV and choose it. Each row is checked like the Add form: unknown projects, categories, partners or bad dates are marked so you can fix them in the file, new vendors are created, and rows that match an entry already in the books (or an earlier row) are left unchecked. Nothing is saved until you press Import.
 
+## Planning, sale and reporting
+
+- **Receipt inbox:** drop receipt photos and contractor PDFs in from any device; any partner files them later as a receipt or bill. Forwarding by email needs a mail service and a domain.
+- **Statements:** import a card or bank CSV, match charges to receipts, split one store trip across properties, and clear the **Missing receipts** list.
+- **Weekly review** with "I'll take it" claims, **Cash needed** for the next 14/30/60 days, and a **Forecast** tab per project with delay and price what-ifs.
+- **Cost basis and profit** on each project's overview (purchase, closing, rehab, holding; ARV; projected or actual profit).
+- **Sale and split** tab: record the sale from the closing statement, set the profit split (LLC default or per project), see who gets what (capital back first, then profit), and record distributions. LLC-wide contributions come back at the LLC's first sale.
+- **Materials** tab: bought, used, returned and leftover, with leftover value.
+- **Recurring and templates:** "Add again" and "Save as template" on any receipt or bill; repeating costs show on Home when due.
+- **Reports:** project P&L, partner activity and spend by project, budget vs actual.
+- New receipts remember who paid and how, per partner. Search covers descriptions and notes.
+
 ## Connect to Supabase
 
 Use the same Supabase project as the iPhone app (see the root README, section 2). The web app needs the Project URL and the `anon` `public` key from **Project Settings → API**. Either:
@@ -83,4 +95,4 @@ The image build runs the tests first, so a broken version won't replace the runn
 
 - Supabase settings are read at runtime from `/config.js`, which the container writes from its environment. Settings saved in the browser override it.
 - Files go to the same private `attachments` bucket as the iPhone app and open with links that expire after an hour.
-- No migration changes: the web app uses the schema in `supabase/migrations/` as is.
+- These features need migrations `…05` and `…06` in `supabase/migrations/`. Without them the app still loads; the new pages are just empty.

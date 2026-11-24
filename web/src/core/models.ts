@@ -191,9 +191,70 @@ export interface Contribution extends RecordBase {
 
 export interface SaleProceed extends RecordBase {
   project_id: string
+  /** Net to the LLC: sale price minus selling costs. */
   amount_cents: Cents
   sale_date: Day
   notes: string
+  gross_price_cents?: Cents | null
+  selling_costs_cents?: Cents | null
+  /** Paid to the lender at closing. Not a cost; shows the cash left to distribute. */
+  loan_payoff_cents?: Cents | null
+}
+
+/** A partner's share of profit, in basis points (2500 = 25%). project_id null = the LLC's default split. */
+export interface ProfitShare { id: string; workspace_id: string; project_id?: string | null; partner_user_id: string; share_bps: number }
+
+/** Money the LLC paid out to a partner from a project: return of capital and profit. */
+export interface Distribution extends RecordBase {
+  partner_user_id: string
+  project_id?: string | null
+  amount_cents: Cents
+  distribution_date: Day
+  payment_method: string
+  reference: string
+  notes: string
+}
+
+/** Lightweight materials tracking: bought, used, returned; the rest is leftover. */
+export interface Material {
+  id: string
+  workspace_id: string
+  project_id: string
+  name: string
+  unit: string
+  qty_bought: number
+  qty_used: number
+  qty_returned: number
+  unit_cost_cents: Cents
+  expense_id?: string | null
+  location: string
+  notes: string
+  created_by?: string | null
+  created_at?: string | null
+  updated_at?: string | null
+}
+export const leftover = (m: Material) => Math.round((m.qty_bought - m.qty_used - m.qty_returned) * 100) / 100
+
+export type Repeat = 'none' | 'monthly' | 'quarterly' | 'yearly'
+export const RepeatOptions: [Repeat, string][] = [['none', "Doesn't repeat"], ['monthly', 'Every month'], ['quarterly', 'Every 3 months'], ['yearly', 'Every year']]
+/** A saved receipt or bill to add again, optionally repeating (insurance, utilities, dumpster). */
+export interface EntryTemplate {
+  id: string
+  workspace_id: string
+  name: string
+  kind: 'receipt' | 'bill'
+  project_id?: string | null
+  vendor_id?: string | null
+  category_id?: string | null
+  amount_cents?: Cents | null
+  paid_by_user_id?: string | null
+  payment_method: string
+  description: string
+  repeat: Repeat | string
+  next_due?: Day | null
+  active: boolean
+  created_by?: string | null
+  created_at?: string | null
 }
 
 export interface Attachment {
@@ -325,6 +386,10 @@ export interface Snapshot {
   claims: Claim[]
   scheduled_draws: ScheduledDraw[]
   cash_balances: CashBalance[]
+  profit_shares: ProfitShare[]
+  distributions: Distribution[]
+  materials: Material[]
+  entry_templates: EntryTemplate[]
 }
 
 export function emptySnapshot(workspace: Workspace): Snapshot {
@@ -333,21 +398,22 @@ export function emptySnapshot(workspace: Workspace): Snapshot {
     change_orders: [], bills: [], expenses: [], allocations: [], payments: [], reimbursements: [],
     reimbursement_items: [], contributions: [], proceeds: [], attachments: [], audit: [],
     inbox_items: [], statement_lines: [], statement_matches: [], claims: [], scheduled_draws: [], cash_balances: [],
+    profit_shares: [], distributions: [], materials: [], entry_templates: [],
   }
 }
 
 // ---------------------------------------------------------------------------
 // References to records
 // ---------------------------------------------------------------------------
-export type EntryKind = 'expense' | 'bill' | 'payment' | 'reimbursement' | 'contribution' | 'proceeds' | 'commitment' | 'changeOrder'
+export type EntryKind = 'expense' | 'bill' | 'payment' | 'reimbursement' | 'contribution' | 'proceeds' | 'distribution' | 'commitment' | 'changeOrder'
 
 export const kindLabel: Record<EntryKind, string> = {
   expense: 'Receipt', bill: 'Bill', payment: 'Payment', reimbursement: 'Reimbursement',
-  contribution: 'Contribution', proceeds: 'Sale proceeds', commitment: 'Commitment', changeOrder: 'Change order',
+  contribution: 'Contribution', proceeds: 'Sale proceeds', distribution: 'Distribution', commitment: 'Commitment', changeOrder: 'Change order',
 }
 export const kindTable: Record<EntryKind, string> = {
   expense: 'expenses', bill: 'bills', payment: 'bill_payments', reimbursement: 'reimbursements',
-  contribution: 'contributions', proceeds: 'sale_proceeds', commitment: 'commitments', changeOrder: 'change_orders',
+  contribution: 'contributions', proceeds: 'sale_proceeds', distribution: 'distributions', commitment: 'commitments', changeOrder: 'change_orders',
 }
 export const allKinds = Object.keys(kindLabel) as EntryKind[]
 
@@ -375,4 +441,6 @@ export interface Entry {
   created_by?: string | null
   attachment_count: number
   due_date?: Day | null
+  /** Description or notes, for search. */
+  notes?: string
 }

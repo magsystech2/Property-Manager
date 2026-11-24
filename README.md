@@ -42,7 +42,7 @@ To install on your own iPhone, set your Apple ID team under *Signing & Capabilit
 
 1. Create a free project at [supabase.com](https://supabase.com).
 2. Apply the database. Either:
-   - **SQL editor:** paste and run each file in `supabase/migrations/` in order (`…01_schema`, `…02_rules`, `…03_storage_realtime`, `…04_member_access`), or
+   - **SQL editor:** paste and run each file in `supabase/migrations/` in order (`…01_schema`, `…02_rules`, `…03_storage_realtime`, `…04_member_access`, `…05_inbox_statements_planning`, `…06_sale_distributions_materials_templates`), or
    - **CLI:** `supabase link --project-ref <ref>` and then `supabase db push`.
    Don't run `seed.sql` on the hosted project. It's for local testing only.
 3. **Authentication → Providers → Email:** keep it on. For a three-person team you can turn off "Confirm email", or leave it on and have each partner confirm by email first.
