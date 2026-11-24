@@ -1,12 +1,12 @@
 // Receipt (already paid) or bill (still owed), with category split and documents.
 import { useState } from 'react'
-import { useStore } from '../store'
-import { Money, uuid } from '../core/money'
+import { type SubmitLink, useStore } from '../store'
+import { Days, Money, uuid } from '../core/money'
 import { isActiveProject } from '../core/models'
 import { unallocated, type TransactionDraft } from '../drafts'
 import { AmountInput, CategorySelect, EntryRow, Field, FilePicker, MethodSelect, ModalShell, ProjectSelect, Segmented, VendorInput } from '../ui/common'
 
-export function TransactionForm({ initial, initialFiles, onClose, note }: { initial: TransactionDraft; initialFiles?: File[]; onClose: () => void; note?: string }) {
+export function TransactionForm({ initial, initialFiles, link, onClose, note }: { initial: TransactionDraft; initialFiles?: File[]; link?: SubmitLink; onClose: () => void; note?: string }) {
   const app = useStore()
   const l = app.ledger
   const [d, setD] = useState<TransactionDraft>(() => {
@@ -27,7 +27,7 @@ export function TransactionForm({ initial, initialFiles, onClose, note }: { init
 
   const post = async () => {
     setBusy(true)
-    const ok = await app.submit(d, files)
+    const ok = await app.submit(d, files, link)
     setBusy(false)
     if (ok) onClose()
   }
@@ -49,6 +49,8 @@ export function TransactionForm({ initial, initialFiles, onClose, note }: { init
       onClose={close} onSave={post} busy={busy} saveTitle={d.kind === 'bill' ? 'Post bill' : 'Post receipt'}
       secondary={<button type="button" className="btn big" onClick={saveDraft}>Save draft</button>}>
       {note && <div className="callout info">{note}</div>}
+      {link?.inbox && <div className="callout info">Filing <strong>{link.inbox.filename}</strong> from the inbox. It's attached to this {d.kind === 'bill' ? 'bill' : 'receipt'} when you save.{link.inbox.note ? ` Note: “${link.inbox.note}”` : ''}</div>}
+      {link?.line && <div className="callout info">From the statement: <strong>{link.line.description}</strong> on {Days.display(link.line.posted_date)}, {Money.format(link.line.amount_cents)} ({link.line.account}). Saving matches this receipt to it.</div>}
       <div className="panel">
         <Segmented value={d.kind} onChange={(k) => set({ kind: k, payer: k === 'bill' ? 'llc' : d.payer })}
           options={[['receipt', 'Receipt · already paid'], ['bill', 'Bill · still owed']]} />

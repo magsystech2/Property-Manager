@@ -7,6 +7,7 @@ import { dedupe } from '../core/ledger'
 import { isActiveProject, projectStatusLabel, projectTypeLabel, type EntryRef } from '../core/models'
 import { AttachmentRow, EntryList, Icon, KV, MoneyKV, MoneyText, PageHead, Section, Segmented, recordPath } from '../ui/common'
 import { ProjectRow } from './Home'
+import { ProjectForecast } from './Forecast'
 import { recordsLink } from './Activity'
 
 export function ProjectsPage() {
@@ -30,7 +31,7 @@ export function ProjectsPage() {
   )
 }
 
-type Tab = 'overview' | 'budget' | 'activity' | 'vendors' | 'files'
+type Tab = 'overview' | 'budget' | 'forecast' | 'activity' | 'vendors' | 'files'
 
 export function ProjectDetailPage() {
   const { id = '' } = useParams()
@@ -48,9 +49,10 @@ export function ProjectDetailPage() {
           <Link className="btn" to={`/export?project=${p.id}`}><Icon name="download" />CSV</Link>
         </div>
       </PageHead>
-      <Segmented value={tab} onChange={setTab} options={[['overview', 'Overview'], ['budget', 'Budget'], ['activity', 'Activity'], ['vendors', 'Vendors'], ['files', 'Files']]} />
+      <Segmented value={tab} onChange={setTab} options={[['overview', 'Overview'], ['budget', 'Budget'], ['forecast', 'Forecast'], ['activity', 'Activity'], ['vendors', 'Vendors'], ['files', 'Files']]} />
       {tab === 'overview' && <Overview pid={p.id} />}
       {tab === 'budget' && <Budget pid={p.id} />}
+      {tab === 'forecast' && <ProjectForecast pid={p.id} />}
       {tab === 'activity' && <Section><EntryList entries={l.entries().filter((e) => e.project_id === p.id)} empty="No transactions yet." /></Section>}
       {tab === 'vendors' && <ProjectVendors pid={p.id} />}
       {tab === 'files' && <ProjectFiles pid={p.id} />}

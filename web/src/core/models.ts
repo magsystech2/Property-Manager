@@ -48,6 +48,12 @@ export interface Project {
   target_complete_date?: Day | null
   target_sale_date?: Day | null
   notes: string
+  // Profit forecast inputs (all optional)
+  expected_sale_cents?: Cents | null
+  selling_cost_bps?: number | null      // 600 = 6%
+  monthly_holding_cents?: Cents | null  // taxes, insurance, utilities per month
+  loan_balance_cents?: Cents | null
+  loan_rate_bps?: number | null         // 1100 = 11% a year
 }
 export const ProjectTypes: [string, string][] = [['flip', 'Flip'], ['new_construction', 'New construction']]
 export const ProjectStatuses: [string, string][] = [['planning', 'Planning'], ['active', 'Active'], ['listed', 'Listed'], ['sold', 'Sold'], ['on_hold', 'On hold']]
@@ -222,6 +228,77 @@ export interface AuditEntry {
 }
 
 /** Everything the app shows, for one workspace. */
+/** A receipt photo or invoice PDF waiting in the shared inbox until a partner files it as a receipt or bill. */
+export interface InboxItem {
+  id: string
+  workspace_id: string
+  storage_path: string
+  filename: string
+  mime_type: string
+  size_bytes: number
+  note: string
+  source: 'upload' | 'share' | 'email' | string
+  suggested_kind?: 'receipt' | 'bill' | null
+  suggested_project_id?: string | null
+  suggested_vendor?: string | null
+  suggested_date?: Day | null
+  suggested_total_cents?: Cents | null
+  status: 'new' | 'filed' | 'dismissed' | string
+  filed_expense_id?: string | null
+  filed_bill_id?: string | null
+  dismiss_reason?: string | null
+  handled_by?: string | null
+  handled_at?: string | null
+  client_id?: string | null
+  created_by?: string | null
+  created_at?: string | null
+}
+
+/** One row of an imported card or bank statement. amount_cents > 0 is money out. */
+export interface StatementLine {
+  id: string
+  workspace_id: string
+  account: string
+  account_owner?: string | null  // partner's personal card; null = LLC account
+  posted_date: Day
+  description: string
+  amount_cents: Cents
+  fingerprint: string
+  import_batch: string
+  status: 'unmatched' | 'matched' | 'ignored' | string
+  ignore_reason?: string | null
+  handled_by?: string | null
+  handled_at?: string | null
+  created_by?: string | null
+  created_at?: string | null
+}
+
+export interface StatementMatch {
+  id: string
+  workspace_id: string
+  statement_line_id: string
+  expense_id?: string | null
+  bill_payment_id?: string | null
+  created_by?: string | null
+  created_at?: string | null
+}
+
+export type ClaimKind = 'bill' | 'reimbursement' | 'change_order' | 'inbox_item' | 'statement_line' | 'expense'
+export interface Claim { id: string; workspace_id: string; item_kind: ClaimKind | string; item_id: string; claimed_by: string; claimed_at?: string | null }
+
+export interface ScheduledDraw {
+  id: string
+  workspace_id: string
+  commitment_id: string
+  due_date: Day
+  amount_cents: Cents
+  description: string
+  created_by?: string | null
+  created_at?: string | null
+}
+
+export interface CashBalance { id: string; workspace_id: string; as_of: Day; amount_cents: Cents; note: string; created_by?: string | null; created_at?: string | null }
+
 export interface Snapshot {
   workspace: Workspace
   members: Member[]
@@ -242,6 +319,12 @@ export interface Snapshot {
   proceeds: SaleProceed[]
   attachments: Attachment[]
   audit: AuditEntry[]
+  inbox_items: InboxItem[]
+  statement_lines: StatementLine[]
+  statement_matches: StatementMatch[]
+  claims: Claim[]
+  scheduled_draws: ScheduledDraw[]
+  cash_balances: CashBalance[]
 }
 
 export function emptySnapshot(workspace: Workspace): Snapshot {
@@ -249,6 +332,7 @@ export function emptySnapshot(workspace: Workspace): Snapshot {
     workspace, members: [], invites: [], categories: [], projects: [], budgets: [], vendors: [], commitments: [],
     change_orders: [], bills: [], expenses: [], allocations: [], payments: [], reimbursements: [],
     reimbursement_items: [], contributions: [], proceeds: [], attachments: [], audit: [],
+    inbox_items: [], statement_lines: [], statement_matches: [], claims: [], scheduled_draws: [], cash_balances: [],
   }
 }
 

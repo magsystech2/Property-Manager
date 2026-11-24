@@ -4,7 +4,7 @@ import { Ledger } from '../core/ledger'
 import { Rules, LedgerError } from '../core/rules'
 import { demoSnapshot, DemoIds } from '../core/demoData'
 import { Days } from '../core/money'
-import type { Snapshot, EntryRef, Attachment } from '../core/models'
+import { emptySnapshot, type Snapshot, type EntryRef, type Attachment, type InboxItem, type StatementLine, type StatementMatch, type Claim, type ScheduledDraw, type CashBalance } from '../core/models'
 import type { Backend, NewRecord, StatusChange, AllocationInput } from './types'
 import { uuid } from '../core/money'
 
@@ -14,7 +14,11 @@ const ACTOR_KEY = 'ledger.demo.actingAs'
 function load(): Snapshot {
   try {
     const raw = localStorage.getItem(KEY)
-    if (raw) return JSON.parse(raw)
+    if (raw) {
+      // Sample data saved by an older version may lack newer lists.
+      const s = { ...emptySnapshot(demoSnapshot().workspace), ...JSON.parse(raw) } as Snapshot
+      return s
+    }
   } catch { /* fall through to fresh sample data */ }
   return demoSnapshot()
 }
@@ -262,6 +266,93 @@ export class DemoBackend implements Backend {
     this.snapshot.attachments.push({ ...a, uploaded_by: this.actingAs, created_at: this.now() })
     this.changed()
   }
+  // Receipt inbox
+  async addInboxItem(i: InboxItem) {
+    if (this.snapshot.inbox_items.some((x) => x.id === i.id || (i.client_id && x.client_id === i.client_id))) return
+    this.snapshot.inbox_items.push({ ...i, status: 'new', created_by: this.actingAs, created_at: this.now() })
+    this.audit('inbox_items', i.id, 'insert')
+    this.changed()
+  }
+  async updateInboxItem(id: string, patch: Parameters<Backend['updateInboxItem']>[1]) {
+    const i = this.snapshot.inbox_items.findIndex((x) => x.id === id)
+    if (i < 0) throw new LedgerError('Inbox item not found.')
+    const cur = this.snapshot.inbox_items[i]
+    const next = { ...cur, ...patch }
+    if (cur.status === 'filed' && next.status !== 'filed') throw new LedgerError('This inbox item was already filed.')
+    if (next.status === 'filed' && !next.filed_expense_id && !next.filed_bill_id) throw new LedgerError('File it as a receipt or bill first.')
+    if (next.status === 'dismissed' && !next.dismiss_reason?.trim()) throw new LedgerError('Give a reason for dismissing it.')
+    if (next.status !== cur.status) { next.handled_by = this.actingAs; next.handled_at = this.now() }
+    this.snapshot.inbox_items[i] = next
+    this.audit('inbox_items', id, 'update')
+    this.changed()
+  }
+  // Statements
+  async importStatementLines(lines: StatementLine[]) {
+    const have = new Set(this.snapshot.statement_lines.map((l) => l.fingerprint))
+    const fresh = lines.filter((l) => !have.has(l.fingerprint) && (have.add(l.fingerprint), true))
+    for (const l of fresh) this.checkPartner(l.account_owner)
+    this.snapshot.statement_lines.push(...fresh.map((l) => ({ ...l, status: 'unmatched', created_by: this.actingAs, created_at: this.now() })))
+    if (fresh.length) this.changed()
+    return fresh.length
+  }
+  async setStatementStatus(id: string, status: 'unmatched' | 'matched' | 'ignored', reason?: string | null) {
+    const i = this.snapshot.statement_lines.findIndex((x) => x.id === id)
+    if (i < 0) throw new LedgerError('Statement line not found.')
+    if (status === 'ignored' && !reason?.trim()) throw new LedgerError('Give a reason for ignoring it.')
+    this.snapshot.statement_lines[i] = { ...this.snapshot.statement_lines[i], status, ignore_reason: status === 'ignored' ? reason! : null, handled_by: this.actingAs, handled_at: this.now() }
+    this.audit('statement_lines', id, 'update')
+    this.changed()
+  }
+  async addMatch(m: StatementMatch) {
+    const line = this.snapshot.statement_lines.find((l) => l.id === m.statement_line_id)
+    if (!line) throw new LedgerError('Statement line not found.')
+    if (this.snapshot.statement_matches.some((x) => x.id === m.id)) return
+    if (this.snapshot.statement_matches.some((x) => (m.expense_id && x.expense_id === m.expense_id) || (m.bill_payment_id && x.bill_payment_id === m.bill_payment_id))) {
+      throw new LedgerError('That record is already matched to a statement line.')
+    }
+    const amount = (x: StatementMatch) => {
+      if (x.expense_id) { const e = this.snapshot.expenses.find((r) => r.id === x.expense_id); if (!e || e.status !== 'posted') throw new LedgerError('Only posted records can be matched.'); return e.is_refund ? -e.total_cents : e.total_cents }
+      const p = this.snapshot.payments.find((r) => r.id === x.bill_payment_id); if (!p || p.status !== 'posted') throw new LedgerError('Only posted records can be matched.'); return p.kind === 'refund' ? -p.amount_cents : p.amount_cents
+    }
+    const total = this.snapshot.statement_matches.filter((x) => x.statement_line_id === line.id).reduce((a, x) => a + amount(x), 0) + amount(m)
+    if (Math.abs(total) > Math.abs(line.amount_cents)) throw new LedgerError('Matched records add up to more than the statement line.')
+    this.snapshot.statement_matches.push({ ...m, created_by: this.actingAs, created_at: this.now() })
+    this.audit('statement_matches', m.id, 'insert')
+    this.changed()
+  }
+  async removeMatch(id: string) {
+    this.snapshot.statement_matches = this.snapshot.statement_matches.filter((x) => x.id !== id)
+    this.audit('statement_matches', id, 'delete')
+    this.changed()
+  }
+  // Weekly review and cash planning
+  async claim(c: Claim) {
+    if (c.claimed_by !== this.actingAs) throw new LedgerError('You can only claim items for yourself.')
+    const other = this.snapshot.claims.find((x) => x.item_kind === c.item_kind && x.item_id === c.item_id)
+    if (other) throw new LedgerError(`${this.snapshot.members.find((m) => m.user_id === other.claimed_by)?.display_name ?? 'Someone'} already claimed this.`)
+    this.snapshot.claims.push({ ...c, claimed_at: this.now() })
+    this.changed()
+  }
+  async releaseClaim(id: string) {
+    this.snapshot.claims = this.snapshot.claims.filter((x) => x.id !== id)
+    this.changed()
+  }
+  async saveDraw(d: ScheduledDraw) {
+    if (!(d.amount_cents > 0)) throw new LedgerError('Enter an amount greater than zero.')
+    const i = this.snapshot.scheduled_draws.findIndex((x) => x.id === d.id)
+    if (i >= 0) this.snapshot.scheduled_draws[i] = d
+    else this.snapshot.scheduled_draws.push({ ...d, created_by: this.actingAs, created_at: this.now() })
+    this.changed()
+  }
+  async deleteDraw(id: string) {
+    this.snapshot.scheduled_draws = this.snapshot.scheduled_draws.filter((x) => x.id !== id)
+    this.changed()
+  }
+  async addCashBalance(c: CashBalance) {
+    this.snapshot.cash_balances.push({ ...c, created_by: this.actingAs, created_at: this.now() })
+    this.changed()
+  }
+
   async fileURL(path: string) {
     const url = this.files.get(path)
     if (!url) throw new LedgerError('Demo mode keeps documents only until you reload the page, and the sample documents have no real file.')

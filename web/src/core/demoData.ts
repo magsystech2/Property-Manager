@@ -154,5 +154,30 @@ export function demoSnapshot(today: Day = Days.today): Snapshot {
     file('demo-sf-210.pdf', 'SF-210.pdf', 'application/pdf', 96_000, { bill_id: frameBill.id }, partnerA, -12),
     file('demo-check-2001.jpg', 'check-2001.jpg', 'image/jpeg', 120_000, { bill_payment_id: framePay.id }, partnerB, -8),
   ]
+
+  // Planning: forecast inputs, cash on hand, scheduled draws, an inbox item and a few card/bank statement lines.
+  Object.assign(oak, { expected_sale_cents: 32_900_000, selling_cost_bps: 600, monthly_holding_cents: 110_000, loan_balance_cents: 15_000_000, loan_rate_bps: 1100 })
+  Object.assign(pine, { expected_sale_cents: 48_900_000, selling_cost_bps: 550, monthly_holding_cents: 65_000, loan_balance_cents: 0, loan_rate_bps: 0 })
+  s.cash_balances = [{ id: uuid(), workspace_id: ws, as_of: d(-1), amount_cents: 1_200_000, note: 'LLC checking', created_by: partnerA, created_at: ts(-1) }]
+  s.scheduled_draws = [
+    { id: uuid(), workspace_id: ws, commitment_id: framing.id, due_date: d(10), amount_cents: 300_000, description: 'Draw 3: roof framing', created_by: partnerA, created_at: ts(-5) },
+    { id: uuid(), workspace_id: ws, commitment_id: framing.id, due_date: d(24), amount_cents: 300_000, description: 'Final draw', created_by: partnerA, created_at: ts(-5) },
+  ]
+  s.inbox_items = [{
+    id: uuid(), workspace_id: ws, storage_path: `${ws}/demo-inbox-abc-1012.pdf`, filename: 'ABC-Plumbing-invoice-1012.pdf', mime_type: 'application/pdf',
+    size_bytes: 88_000, note: 'Oak St final rough-in, $1,850.00', source: 'upload', suggested_kind: 'bill', suggested_project_id: oak.id,
+    suggested_vendor: 'ABC Plumbing', suggested_date: d(-1), suggested_total_cents: 185_000, status: 'new', client_id: uuid(), created_by: partnerC, created_at: ts(-1),
+  }]
+  const batch = uuid()
+  const line = (account: string, owner: string | null, day: number, description: string, amount: Cents) => ({
+    id: uuid(), workspace_id: ws, account, account_owner: owner, posted_date: d(day), description, amount_cents: amount,
+    fingerprint: `${account}|${d(day)}|${amount}|${description}|1`.toLowerCase(), import_batch: batch, status: 'unmatched', created_by: partnerA, created_at: ts(-1),
+  })
+  s.statement_lines = [
+    line('Partner B card 7788', partnerB, -19, "LOWE'S #1187 MARIETTA GA", 231_055),
+    line('Madhan card 4421', partnerA, -1, 'THE HOME DEPOT #6512 ATLANTA GA', 8_734),
+    line('Madhan card 4421', partnerA, -2, 'HOME DEPOT TOOL RENTAL #6512', 12_000),
+    line('LLC checking 0199', null, -9, 'CITY WATER UTIL AUTOPAY', 8_820),
+  ]
   return s
 }

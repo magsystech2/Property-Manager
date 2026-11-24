@@ -2,7 +2,7 @@
 // Access is enforced by the database (row-level security + triggers), so the app can't bypass it.
 import { createClient, type SupabaseClient, type RealtimeChannel } from '@supabase/supabase-js'
 import { Rules } from '../core/rules'
-import { emptySnapshot, kindTable, type Snapshot, type Workspace, type EntryRef, type Attachment, type Expense, type Bill } from '../core/models'
+import { emptySnapshot, kindTable, type Snapshot, type Workspace, type EntryRef, type Attachment, type Expense, type Bill, type InboxItem, type StatementLine, type StatementMatch, type Claim, type ScheduledDraw, type CashBalance } from '../core/models'
 import type { Backend, NewRecord, StatusChange, AllocationInput } from './types'
 import { BackendError } from './types'
 
@@ -90,11 +90,16 @@ export class SupabaseBackend implements Backend {
       rows('reimbursements'), rows('reimbursement_items'), rows('contributions'), rows('sale_proceeds'), rows('attachments'),
     ])
     const invites = await rows('invites').catch(() => [])
+    // Tables from the 2026-11-24 migration; an older database without them still loads.
+    const optional = (t: string) => rows(t).catch(() => [])
+    const [inbox, lines, matches, claims, draws, cash] = await Promise.all([optional('inbox_items'), optional('statement_lines'),
+      optional('statement_matches'), optional('claims'), optional('scheduled_draws'), optional('cash_balances')])
     const audit = await this.wrap(() => this.client.from('audit_log').select('id,workspace_id,table_name,record_id,action,actor,at,reason')
       .eq('workspace_id', ws).order('id', { ascending: false }).limit(1000))
     Object.assign(s, {
       members, categories, projects, budgets, vendors, commitments, change_orders: changeOrders, bills, expenses, allocations,
       payments, reimbursements, reimbursement_items: items, contributions, proceeds, attachments, invites, audit,
+      inbox_items: inbox, statement_lines: lines, statement_matches: matches, claims, scheduled_draws: draws, cash_balances: cash,
     })
     return s
   }
@@ -147,7 +152,8 @@ export class SupabaseBackend implements Backend {
 
   // Reference data
   async saveProject(p: Parameters<Backend['saveProject']>[0]) {
-    const row = pick(p, ['id', 'workspace_id', 'nickname', 'address', 'project_type', 'status', 'start_date', 'target_complete_date', 'target_sale_date', 'notes'])
+    const row = pick(p, ['id', 'workspace_id', 'nickname', 'address', 'project_type', 'status', 'start_date', 'target_complete_date', 'target_sale_date', 'notes',
+      'expected_sale_cents', 'selling_cost_bps', 'monthly_holding_cents', 'loan_balance_cents', 'loan_rate_bps'])
     await this.wrap(() => this.client.from('projects').upsert(row, { onConflict: 'id' }))
   }
   async saveVendor(v: Parameters<Backend['saveVendor']>[0]) {
@@ -195,6 +201,50 @@ export class SupabaseBackend implements Backend {
     const { uploaded_by: _u, created_at: _c, ...row } = a
     await this.wrap(() => this.client.from('attachments').upsert(row, { onConflict: 'client_id', ignoreDuplicates: true }))
   }
+  // Receipt inbox
+  async addInboxItem(i: InboxItem) {
+    const { status: _s, created_by: _c, created_at: _a, handled_by: _h, handled_at: _t, ...row } = i
+    await this.wrap(() => this.client.from('inbox_items').upsert(row, { onConflict: 'client_id', ignoreDuplicates: true }))
+  }
+  async updateInboxItem(id: string, patch: Parameters<Backend['updateInboxItem']>[1]) {
+    const rows = await this.wrap(() => this.client.from('inbox_items').update(patch).eq('id', id).select('id'))
+    if (!rows || (rows as unknown[]).length === 0) throw new BackendError("You don't have permission to change this inbox item.")
+  }
+  // Statements
+  async importStatementLines(lines: StatementLine[]) {
+    let added = 0
+    for (let i = 0; i < lines.length; i += 500) {
+      const chunk = lines.slice(i, i + 500).map(({ status: _s, created_by: _c, created_at: _a, handled_by: _h, handled_at: _t, ignore_reason: _r, ...row }) => row)
+      const data = await this.wrap(() => this.client.from('statement_lines').upsert(chunk, { onConflict: 'workspace_id,fingerprint', ignoreDuplicates: true }).select('id'))
+      added += (data as unknown[] | null)?.length ?? 0
+    }
+    return added
+  }
+  async setStatementStatus(id: string, status: 'unmatched' | 'matched' | 'ignored', reason?: string | null) {
+    const rows = await this.wrap(() => this.client.from('statement_lines').update({ status, ignore_reason: status === 'ignored' ? reason : null }).eq('id', id).select('id'))
+    if (!rows || (rows as unknown[]).length === 0) throw new BackendError("You don't have permission to change this statement line.")
+  }
+  async addMatch(m: StatementMatch) {
+    const { created_by: _c, created_at: _a, ...row } = m
+    await this.wrap(() => this.client.from('statement_matches').upsert(row, { onConflict: 'id', ignoreDuplicates: true }))
+  }
+  async removeMatch(id: string) { await this.wrap(() => this.client.from('statement_matches').delete().eq('id', id)) }
+  // Weekly review and cash planning
+  async claim(c: Claim) {
+    const { claimed_at: _a, ...row } = c
+    await this.wrap(() => this.client.from('claims').insert(row))
+  }
+  async releaseClaim(id: string) { await this.wrap(() => this.client.from('claims').delete().eq('id', id)) }
+  async saveDraw(d: ScheduledDraw) {
+    const { created_by: _c, created_at: _a, ...row } = d
+    await this.wrap(() => this.client.from('scheduled_draws').upsert(row, { onConflict: 'id' }))
+  }
+  async deleteDraw(id: string) { await this.wrap(() => this.client.from('scheduled_draws').delete().eq('id', id)) }
+  async addCashBalance(c: CashBalance) {
+    const { created_by: _c, created_at: _a, ...row } = c
+    await this.wrap(() => this.client.from('cash_balances').insert(row))
+  }
+
   async fileURL(path: string) {
     const data = await this.wrap(() => this.client.storage.from('attachments').createSignedUrl(path, 3600))
     return data!.signedUrl
@@ -221,6 +271,9 @@ function mapError(e: unknown): Error {
   if (msg.includes('bills_invoice_uq')) return new BackendError('That invoice number from this vendor is already entered.')
   if (msg.includes('vendors_name_uq')) return new BackendError('A vendor with that name already exists.')
   if (/Change an owner to partner|Only an owner can change who has access|Restore access before/.test(msg)) return new BackendError(msg.replace(/^.*?(Change an owner|Only an owner|Restore access)/, '$1'))
+  if (msg.includes('claims_workspace_id_item_kind_item_id_key')) return new BackendError('Someone already claimed this. Refresh to see who.')
+  if (msg.includes('statement_matches_expense_uq') || msg.includes('statement_matches_payment_uq')) return new BackendError('That record is already matched to a statement line.')
+  if (/already filed|add up to more than the statement line|Only posted records can be matched|can only claim items for yourself/.test(msg)) return new BackendError(msg.replace(/^.*?ERROR:\s*/, ''))
   if (msg.includes('row-level security')) return new BackendError("You don't have access to do that in this workspace.")
   return new BackendError(msg)
 }

@@ -1,7 +1,6 @@
 import type {
   Allocation, Bill, BillPayment, BudgetCategory, ChangeOrder, Commitment, Contribution, EntryRef, Expense, Invite, Member,
-  Project, ProjectBudget, Reimbursement, ReimbursementItem, SaleProceed, Snapshot, Vendor, Workspace, Attachment,
-} from '../core/models'
+  Project, ProjectBudget, Reimbursement, ReimbursementItem, SaleProceed, Snapshot, Vendor, Workspace, Attachment, InboxItem, StatementLine, StatementMatch, Claim, ScheduledDraw, CashBalance, } from '../core/models'
 import type { Day } from '../core/money'
 
 /** New records other than receipts and bills (those carry a category split). */
@@ -55,6 +54,23 @@ export interface Backend {
 
   upload(file: Blob, path: string, mimeType: string): Promise<void>
   addAttachment(a: Attachment): Promise<void>
+
+  // Receipt inbox
+  addInboxItem(i: InboxItem): Promise<void>
+  /** Status changes only: file (with the new record), dismiss (with a reason), or reopen a dismissed item. */
+  updateInboxItem(id: string, patch: Partial<Pick<InboxItem, 'status' | 'filed_expense_id' | 'filed_bill_id' | 'dismiss_reason'>>): Promise<void>
+  // Statements
+  /** Adds lines, skipping any whose fingerprint is already in. Returns how many were new. */
+  importStatementLines(lines: StatementLine[]): Promise<number>
+  setStatementStatus(id: string, status: 'unmatched' | 'matched' | 'ignored', reason?: string | null): Promise<void>
+  addMatch(m: StatementMatch): Promise<void>
+  removeMatch(id: string): Promise<void>
+  // Weekly review and cash planning
+  claim(c: Claim): Promise<void>
+  releaseClaim(id: string): Promise<void>
+  saveDraw(d: ScheduledDraw): Promise<void>
+  deleteDraw(id: string): Promise<void>
+  addCashBalance(c: CashBalance): Promise<void>
   fileURL(path: string): Promise<string>
 
   /** Calls back whenever shared data changes (other partners' edits). Returns an unsubscribe function. */

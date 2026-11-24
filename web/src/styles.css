@@ -229,3 +229,9 @@ iframe.viewer { height: 70vh; border: 0; }
 .import-table tr.row-done td { opacity: .6; }
 .dropzone { border: 2px dashed var(--border); border-radius: 10px; gap: 10px; color: var(--muted); }
 .dropzone.drag { border-color: var(--accent); background: var(--accent-soft); }
+.nav-count { margin-left: auto; background: var(--accent); color: #fff; border-radius: 999px; font-size: 11px; font-weight: 700; padding: 1px 7px; }
+.tile .big { font-size: 24px; font-weight: 700; margin: 4px 0 2px; font-variant-numeric: tabular-nums; }
+.badge.warn { background: var(--warn-soft); color: var(--warn); }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface); color: var(--text); font-size: 13px; font-weight: 600; text-decoration: none; }
+.chip.hot { border-color: var(--warn); color: var(--warn); background: var(--warn-soft); }

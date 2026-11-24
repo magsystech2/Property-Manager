@@ -4,13 +4,14 @@ import { Ledger } from './core/ledger'
 import { Rules, LedgerError } from './core/rules'
 import { uuid, Money } from './core/money'
 import { emptySnapshot, type Snapshot, type Workspace, type EntryRef, type Project, type Vendor, type ProjectBudget,
-  type BudgetCategory, type Member, type Invite, type Expense, type Bill, type Attachment } from './core/models'
+  type BudgetCategory, type Member, type Invite, type Expense, type Bill, type Attachment , type InboxItem, type StatementLine, type Claim, type ClaimKind, type ScheduledDraw } from './core/models'
 import type { Backend, NewRecord, StatusChange } from './backend/types'
 import { BackendError } from './backend/types'
 import { DemoBackend } from './backend/demo'
 import { SupabaseBackend } from './backend/supabase'
 import { AppConfig } from './config'
-import { DraftStore, draftAllocations, draftTotal, type TransactionDraft } from './drafts'
+import { DraftStore, draftAllocations, draftTotal, newDraft, type TransactionDraft } from './drafts'
+import { lineMatchedCents, suggestFromText, vendorFromDescription } from './core/planning'
 
 export type Phase = 'launching' | 'welcome' | 'signIn' | 'chooseWorkspace' | 'ready'
 
@@ -18,8 +19,13 @@ export type Phase = 'launching' | 'welcome' | 'signIn' | 'chooseWorkspace' | 're
 /** Where a document gets filed: on a transaction, or directly on a project or vendor (permits, contracts, W-9s…). */
 export type AttachTarget = { kind: 'record'; ref: EntryRef } | { kind: 'project'; id: string } | { kind: 'vendor'; id: string }
 
+/** A receipt or bill entered from an inbox item (its file is attached) or a statement line (it gets matched). */
+export type SubmitLink = { inbox?: InboxItem; line?: StatementLine }
+
 export type Modal =
-  | { type: 'transaction'; draft: TransactionDraft; files?: File[] }
+  | { type: 'transaction'; draft: TransactionDraft; files?: File[]; link?: SubmitLink }
+  | { type: 'splitLine'; line: StatementLine }
+  | { type: 'draw'; commitmentId: string }
   | { type: 'voice' }
   | { type: 'payment'; billId?: string | null }
   | { type: 'contribution'; projectId?: string | null; partnerId?: string | null }
@@ -257,7 +263,7 @@ export class AppStore {
   }
 
   /** Validates and posts a receipt or bill with its documents. */
-  async submit(d: TransactionDraft, files: File[]): Promise<boolean> {
+  async submit(d: TransactionDraft, files: File[], link: SubmitLink = {}): Promise<boolean> {
     const b = this.backend
     const ws = this.workspace?.id
     if (!b || !ws) return false
@@ -287,6 +293,17 @@ export class AppStore {
       // 4. Link the files.
       const ref: EntryRef = { kind: d.kind === 'bill' ? 'bill' : 'expense', id: d.id }
       for (const u of uploads) await b.addAttachment(this.attachmentRow(ws, u.path, u.f, ref, u.id))
+      // 5. From the inbox: the inbox file becomes this record's document, and the item is marked filed.
+      if (link.inbox) {
+        const i = link.inbox
+        await b.addAttachment({ ...this.attachmentRow(ws, i.storage_path, new File([], i.filename, { type: i.mime_type }), ref, i.id), size_bytes: i.size_bytes })
+        await b.updateInboxItem(i.id, d.kind === 'bill' ? { status: 'filed', filed_bill_id: d.id } : { status: 'filed', filed_expense_id: d.id })
+      }
+      // 6. From a statement line: match the new receipt to it.
+      if (link.line && d.kind === 'receipt') {
+        await b.addMatch({ id: uuid(), workspace_id: ws, statement_line_id: link.line.id, expense_id: d.id })
+        await b.setStatementStatus(link.line.id, 'matched')
+      }
       this.deleteDraft(d.id)
       this.showToast(d.kind === 'bill' ? 'Bill saved' : 'Receipt saved')
       await this.reload(true)
@@ -334,6 +351,120 @@ export class AppStore {
       await this.reload(true)
     }
     return { saved, failed }
+  }
+
+  // --- Receipt inbox
+  async addToInbox(files: File[], note: string): Promise<boolean> {
+    const b = this.backend
+    const ws = this.workspace?.id
+    if (!b || !ws || files.length === 0) return false
+    const ok = await this.run(async () => {
+      for (const f of files) {
+        const path = `${ws}/${uuid()}-${safeName(f.name)}`
+        await b.upload(f, path, f.type || 'application/octet-stream')
+        const id = uuid()
+        await b.addInboxItem({ id, workspace_id: ws, storage_path: path, filename: f.name, mime_type: f.type || 'application/octet-stream', size_bytes: f.size,
+          note: note.trim(), source: 'upload', status: 'new', client_id: id, ...suggestFromText(`${note} ${f.name}`, this.ledger) })
+      }
+    })
+    if (ok) { this.showToast(files.length === 1 ? 'Added to the inbox' : `${files.length} files added to the inbox`); await this.reload(true) }
+    return ok
+  }
+  dismissInbox(i: InboxItem, reason: string) { return this.simple((b) => b.updateInboxItem(i.id, { status: 'dismissed', dismiss_reason: reason.trim() }), 'Dismissed') }
+  reopenInbox(i: InboxItem) { return this.simple((b) => b.updateInboxItem(i.id, { status: 'new', dismiss_reason: null }), 'Back in the inbox') }
+  /** The category this vendor's latest receipt or bill used, so filing from the inbox or a statement needs one less pick. */
+  private usualCategory(vendorId: string | null): string | null {
+    const s = this.snapshot
+    if (!s || !vendorId) return null
+    const recs = [...s.bills.filter((b) => b.vendor_id === vendorId && !b.voided_at).map((b) => ({ d: b.bill_date, bill: b.id, exp: null as string | null })),
+      ...s.expenses.filter((e) => e.vendor_id === vendorId && !e.voided_at).map((e) => ({ d: e.expense_date, bill: null as string | null, exp: e.id }))]
+      .sort((a, b) => b.d.localeCompare(a.d))
+    for (const r of recs) {
+      const a = s.allocations.find((x) => (r.bill ? x.bill_id === r.bill : x.expense_id === r.exp))
+      if (a) return a.category_id
+    }
+    return null
+  }
+  /** Draft for filing an inbox item, from its suggestions. */
+  inboxDraft(i: InboxItem): TransactionDraft {
+    const d = newDraft(i.suggested_kind === 'bill' ? 'bill' : 'receipt', i.suggested_project_id ?? null)
+    const v = i.suggested_vendor ? this.snapshot?.vendors.find((x) => x.name.toLowerCase() === i.suggested_vendor!.toLowerCase()) : undefined
+    if (v) d.vendor_id = v.id; else if (i.suggested_vendor) d.new_vendor_name = i.suggested_vendor
+    if (i.suggested_total_cents) d.total_text = Money.plain(i.suggested_total_cents)
+    if (i.suggested_date) d.date = i.suggested_date
+    if (d.kind === 'bill') d.payer = 'llc'
+    d.splits[0].category_id = this.usualCategory(d.vendor_id)
+    d.description = i.note
+    return d
+  }
+
+  // --- Statements
+  async importStatement(lines: StatementLine[]): Promise<number | null> {
+    const b = this.backend
+    if (!b) return null
+    let added = 0
+    const ok = await this.run(async () => { added = await b.importStatementLines(lines) })
+    if (!ok) return null
+    this.showToast(added === lines.length ? `${added} statement lines imported` : `${added} new lines imported, ${lines.length - added} already in`)
+    await this.reload(true)
+    return added
+  }
+  matchLine(line: StatementLine, refs: EntryRef[]) {
+    return this.simple(async (b) => {
+      for (const r of refs) await b.addMatch({ id: uuid(), workspace_id: line.workspace_id, statement_line_id: line.id, expense_id: r.kind === 'expense' ? r.id : null, bill_payment_id: r.kind === 'payment' ? r.id : null })
+      // Fully explained: matched. Partly (e.g. one of two receipts found so far): stays in the to-match list.
+      const added = refs.reduce((a, r) => a + (this.ledger.entry(r)?.amount_cents ?? 0), 0)
+      if (lineMatchedCents(this.ledger, line.id) + added === line.amount_cents) await b.setStatementStatus(line.id, 'matched')
+    }, 'Matched')
+  }
+  unmatchLine(line: StatementLine) {
+    return this.simple(async (b) => {
+      for (const m of this.snapshot?.statement_matches.filter((x) => x.statement_line_id === line.id) ?? []) await b.removeMatch(m.id)
+      await b.setStatementStatus(line.id, 'unmatched')
+    }, 'Match undone')
+  }
+  ignoreLine(line: StatementLine, reason: string) { return this.simple((b) => b.setStatementStatus(line.id, 'ignored', reason.trim()), 'Ignored') }
+  unignoreLine(line: StatementLine) { return this.simple((b) => b.setStatementStatus(line.id, 'unmatched'), 'Back to unmatched') }
+  /** Draft receipt for a card charge: amount, date, vendor guess, and the card owner as payer. */
+  lineDraft(line: StatementLine, projectId: string | null = null): TransactionDraft {
+    const d = newDraft('receipt', projectId)
+    const v = vendorFromDescription(line.description, this.ledger)
+    if (v.vendor_id) d.vendor_id = v.vendor_id; else d.new_vendor_name = v.name
+    d.total_text = Money.plain(Math.abs(line.amount_cents))
+    d.is_refund = line.amount_cents < 0
+    d.date = line.posted_date
+    d.payer = line.account_owner ? (line.account_owner === this.me ? 'me' : line.account_owner) : 'llc'
+    d.payment_method = line.account_owner ? 'card' : (/check/i.test(line.description) ? 'check' : 'ach')
+    d.splits[0].category_id = this.usualCategory(d.vendor_id)
+    d.description = line.description
+    return d
+  }
+  /** One store trip split across properties: one receipt per property, all matched to the charge. */
+  async splitLine(line: StatementLine, parts: TransactionDraft[]): Promise<boolean> {
+    const total = parts.reduce((a, d) => a + (draftTotal(d) ?? 0) * (d.is_refund ? -1 : 1), 0)
+    if (total !== line.amount_cents) { this.showError(new LedgerError(`The parts add up to ${Money.format(total)}, not the ${Money.format(line.amount_cents)} charge.`)); return false }
+    const { saved, failed } = await this.importMany(parts)
+    const err = Object.values(failed)[0]
+    if (err) { this.showError(new LedgerError(saved.length ? `${saved.length} of ${parts.length} saved. ${err}` : err)); return false }
+    return this.simple(async (b) => {
+      for (const id of saved) await b.addMatch({ id: uuid(), workspace_id: line.workspace_id, statement_line_id: line.id, expense_id: id })
+      await b.setStatementStatus(line.id, 'matched')
+    }, `Split into ${saved.length} receipts and matched`)
+  }
+
+  // --- Weekly review and cash planning
+  claim(kind: ClaimKind, id: string) {
+    const ws = this.workspace?.id
+    if (!ws || !this.me) return Promise.resolve(false)
+    return this.simple((b) => b.claim({ id: uuid(), workspace_id: ws, item_kind: kind, item_id: id, claimed_by: this.me! }), 'Claimed: it’s yours')
+  }
+  releaseClaim(c: Claim) { return this.simple((b) => b.releaseClaim(c.id), 'Released') }
+  saveDraw(d: ScheduledDraw) { return this.simple((b) => b.saveDraw(d), 'Draw scheduled') }
+  deleteDraw(id: string) { return this.simple((b) => b.deleteDraw(id), 'Draw removed') }
+  setCash(amount: number, asOf: string, note: string) {
+    const ws = this.workspace?.id
+    if (!ws) return Promise.resolve(false)
+    return this.simple((b) => b.addCashBalance({ id: uuid(), workspace_id: ws, as_of: asOf, amount_cents: amount, note }), 'Cash on hand updated')
   }
 
   private attachmentRow(ws: string, path: string, f: File, target: AttachTarget | EntryRef, clientId: string): Attachment {

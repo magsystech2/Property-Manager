@@ -14,6 +14,10 @@ import { ExportPage } from './pages/Export'
 import { SettingsPage } from './pages/Settings'
 import { DraftsPage } from './pages/Drafts'
 import { ImportPage } from './pages/Import'
+import { InboxPage } from './pages/Inbox'
+import { StatementsPage } from './pages/Statements'
+import { ReviewPage, MissingPage } from './pages/Review'
+import { CashPage } from './pages/Cash'
 import { ModalHost } from './forms/ModalHost'
 
 export default function App() {
@@ -57,6 +61,7 @@ const addActions: { label: string; desc: string; icon: string; open: (projectId:
   { label: 'Add expense', desc: 'A receipt, already paid', icon: 'receipt', open: (pid) => store.open({ type: 'transaction', draft: newDraft('receipt', pid) }) },
   { label: 'Add bill', desc: 'An invoice still owed', icon: 'doc', open: (pid) => store.open({ type: 'transaction', draft: newDraft('bill', pid) }) },
   { label: 'Record payment', desc: 'Money paid on a bill', icon: 'cash', open: () => store.open({ type: 'payment' }) },
+  { label: 'Add to inbox', desc: 'Drop a receipt or invoice to file later', icon: 'tray', open: () => {}, to: '/inbox' },
   { label: 'Say it', desc: 'Speak or type a sentence', icon: 'mic', open: () => store.open({ type: 'voice' }) },
   { label: 'Add contribution', desc: 'Capital a partner put in', icon: 'bank', open: (pid) => store.open({ type: 'contribution', partnerId: store.me, projectId: pid }) },
   { label: 'Reimburse a partner', desc: 'Pay back personal spending', icon: 'users', open: () => store.open({ type: 'reimbursement' }) },
@@ -99,6 +104,8 @@ function Shell() {
     { to: '/partners', label: 'Partners', icon: 'users' },
   ]
   const demo = app.demo
+  const inboxCount = app.ledger.s.inbox_items.filter((i) => i.status === 'new').length
+  const unmatchedCount = app.ledger.s.statement_lines.filter((x) => x.status === 'unmatched').length
   return (
     <div className="app">
       <aside className="sidebar">
@@ -109,8 +116,12 @@ function Shell() {
           {menu === 'side' && <AddMenu onClose={() => setMenu(null)} />}
         </div>
         {nav.map((n) => <NavLink key={n.to} to={n.to} end={n.end} className="nav-link"><Icon name={n.icon} />{n.label}</NavLink>)}
+        <NavLink to="/review" className="nav-link"><Icon name="check" />Weekly review</NavLink>
+        <NavLink to="/inbox" className="nav-link"><Icon name="tray" />Inbox{inboxCount ? <span className="nav-count">{inboxCount}</span> : null}</NavLink>
+        <NavLink to="/statements" className="nav-link"><Icon name="bank" />Statements{unmatchedCount ? <span className="nav-count">{unmatchedCount}</span> : null}</NavLink>
+        <NavLink to="/cash" className="nav-link"><Icon name="cash" />Cash needed</NavLink>
         <NavLink to="/vendors" className="nav-link"><Icon name="store" />Vendors</NavLink>
-        <NavLink to="/import" className="nav-link"><Icon name="tray" />Bulk upload</NavLink>
+        <NavLink to="/import" className="nav-link"><Icon name="list" />Bulk upload</NavLink>
         <NavLink to="/export" className="nav-link"><Icon name="download" />Export CSV</NavLink>
         {app.draftList.length > 0 && <NavLink to="/drafts" className="nav-link"><Icon name="tray" />Drafts ({app.draftList.length})</NavLink>}
         <span className="spacer" />
@@ -147,6 +158,11 @@ function Shell() {
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="/drafts" element={<DraftsPage />} />
             <Route path="/import" element={<ImportPage />} />
+            <Route path="/inbox" element={<InboxPage />} />
+            <Route path="/statements" element={<StatementsPage />} />
+            <Route path="/review" element={<ReviewPage />} />
+            <Route path="/missing" element={<MissingPage />} />
+            <Route path="/cash" element={<CashPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </main>

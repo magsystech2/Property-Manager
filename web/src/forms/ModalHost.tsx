@@ -1,3 +1,4 @@
+import { SplitLineForm, DrawForm } from './PlanningForms'
 import { useStore } from '../store'
 import { TransactionForm } from './TransactionForm'
 import {
@@ -12,7 +13,7 @@ export function ModalHost() {
   if (!m) return null
   const close = () => app.open(null)
   switch (m.type) {
-    case 'transaction': return <TransactionForm key={m.draft.id} initial={m.draft} initialFiles={m.files} onClose={close} />
+    case 'transaction': return <TransactionForm key={m.draft.id} initial={m.draft} initialFiles={m.files} link={m.link} onClose={close} />
     case 'voice': return <VoiceForm onClose={close} />
     case 'payment': return <PaymentForm billId={m.billId} onClose={close} />
     case 'contribution': return <ContributionForm projectId={m.projectId} partnerId={m.partnerId} onClose={close} />
@@ -25,6 +26,8 @@ export function ModalHost() {
     case 'vendor': return <VendorForm vendor={m.vendor} onClose={close} />
     case 'void': return <VoidForm refx={m.ref} onClose={close} />
     case 'markPaid': return <MarkPaidForm refx={m.ref} onClose={close} />
+    case 'splitLine': return <SplitLineForm line={m.line} onClose={close} />
+    case 'draw': return <DrawForm commitmentId={m.commitmentId} onClose={close} />
     case 'attach': return <AttachForm target={m.target} onClose={close} />
   }
 }

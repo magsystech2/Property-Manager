@@ -217,6 +217,17 @@ function Details({ refx: ref }: { refx: EntryRef }) {
           {cos.length === 0 && <div className="empty">None</div>}
           {cos.map((co) => { const e = l.entry({ kind: 'changeOrder', id: co.id }); return e ? <EntryRow key={co.id} entry={e} /> : null })}
         </Section>
+        <Section title="Scheduled draws" footer="Expected payment dates for the cash forecast. They don't change any totals."
+          action={c.status !== 'void' ? <button className="btn link" onClick={() => app.open({ type: 'draw', commitmentId: c.id })}>+ Schedule a draw</button> : undefined}>
+          {s.scheduled_draws.filter((d) => d.commitment_id === c.id).length === 0 && <div className="empty">None</div>}
+          {s.scheduled_draws.filter((d) => d.commitment_id === c.id).sort((a, b) => a.due_date.localeCompare(b.due_date)).map((d) => (
+            <div key={d.id} className="item">
+              <span className="grow"><span className="title">{Days.display(d.due_date)}</span>{d.description && <span className="subtitle"> · {d.description}</span>}</span>
+              <MoneyText cents={d.amount_cents} />
+              <button className="btn link danger" onClick={() => app.deleteDraw(d.id)}>Remove</button>
+            </div>
+          ))}
+        </Section>
         <Section title="Bills against this contract" action={c.status !== 'void' ? (
           <button className="btn link" onClick={() => {
             const d = newDraft('bill')

@@ -4,6 +4,29 @@ import { Money } from '../core/money'
 import { isActiveProject, projectTypeLabel, projectStatusLabel, type Project } from '../core/models'
 import { EntryList, Icon, MoneyText, PageHead, Section, Tile } from '../ui/common'
 import { recordsLink } from './Activity'
+import { cashPlan, missingReceipts } from '../core/planning'
+
+/** Chips for the work waiting this week, so phone users reach the review screens from Home. */
+function ThisWeek() {
+  const app = useStore()
+  const l = app.ledger
+  const inbox = l.s.inbox_items.filter((i) => i.status === 'new').length
+  const unmatched = l.s.statement_lines.filter((x) => x.status === 'unmatched').length
+  const missing = missingReceipts(l).filter((m) => m.owner === app.me).length
+  const plan = cashPlan(l)
+  const chips: [string, string, string, boolean][] = [
+    ['/review', 'check', 'Weekly review', false],
+    ['/inbox', 'tray', `${inbox} in the inbox`, inbox > 0],
+    ['/statements', 'bank', `${unmatched} charges to match`, unmatched > 0],
+    ['/missing', 'receipt', `${missing} missing receipts of yours`, missing > 0],
+    ['/cash', 'cash', plan.shortfall ? `Cash short ${Money.format(plan.shortfall.short_by_cents, false)} by ${new Date(plan.shortfall.date + 'T00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}` : `${Money.format(plan.total_cents, false)} due in 30 days`, !!plan.shortfall],
+  ]
+  return (
+    <div className="chips">
+      {chips.map(([to, icon, label, hot]) => <Link key={to} to={to} className={`chip ${hot ? 'hot' : ''}`}><Icon name={icon} size={14} />{label}</Link>)}
+    </div>
+  )
+}
 
 export function HomePage() {
   const app = useStore()
@@ -17,6 +40,8 @@ export function HomePage() {
       <PageHead title={app.workspace?.name ?? 'Home'} sub={app.lastSynced ? `Updated ${app.lastSynced.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` : undefined}>
         <button className="btn" onClick={() => app.reload()} disabled={app.syncing}><Icon name="refresh" />{app.syncing ? 'Refreshing…' : 'Refresh'}</button>
       </PageHead>
+
+      <ThisWeek />
 
       {h.overdue.length > 0 && (
         <Section title={<span className="bad row" style={{ gap: 6 }}><Icon name="alert" size={14} />Overdue bills</span>}>
