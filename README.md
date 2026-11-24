@@ -100,10 +100,10 @@ supabase/tests/concurrency.sh          # two partners pay the same $1,000 bill a
 
 ## Notes and limits
 
-- Payments are recorded after they happen outside the app. No bank connections, and no money moves.
+- Payments are recorded after they happen outside the app. No direct bank connections (statements come in as CSV files), and no money moves.
 - Receipts and bills entered offline are kept on the phone and marked "Waiting to sync" until they upload. Other records (payments, reimbursements) need a connection when you save them.
 - Each list loads up to 10,000 rows per table. Add paging before it grows past that.
 - **Share into the app:** in Mail, Files or Photos, share a PDF or photo to Project Ledger (or use "Open in"). It lands in the receipt inbox for anyone to file.
 - Statement import reads the CSV your bank or card site exports. Rows already imported are skipped, so overlapping downloads are safe.
 - Project documents that aren't one transaction (permits, plans, closing papers) go on the project's **Files** tab. Vendor documents (contracts, W-9s, insurance certificates) go on the vendor's page. Neither changes any totals.
-- Profit splits and distributions are tracked; tax accounting is not.
+- Profit splits and distributions are tracked. Tax accounting is not: no tax categories, 1099 tracking or accounting exports beyond the CSV.
