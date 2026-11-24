@@ -1,6 +1,7 @@
 import Foundation
 import Observation
 import UIKit
+import UniformTypeIdentifiers
 import LedgerCore
 
 /// App state shared by all screens.
@@ -259,6 +260,26 @@ final class AppModel {
                 try await backend.add(attachment: Attachment(workspaceId: ws, storagePath: storagePath(ws, f), filename: f.filename,
                                                              mimeType: f.mimeType, sizeBytes: f.size, link: ref, clientId: f.id))
             }
+            // 5. From the inbox: the inbox file becomes this record's document, and the item is marked filed.
+            if let iid = d.inboxItemId, let item = snapshot?.inboxItems.first(where: { $0.id == iid }), item.status == "new" {
+                try await backend.add(attachment: Attachment(workspaceId: ws, storagePath: item.storagePath, filename: item.filename,
+                                                             mimeType: item.mimeType, sizeBytes: item.sizeBytes, link: ref, clientId: item.id))
+                try await backend.perform(.fileInbox(id: iid, expenseId: d.kind == .receipt ? d.id : nil, billId: d.kind == .bill ? d.id : nil))
+            }
+            // 6. From a statement line: match the new receipt to it.
+            if let lid = d.statementLineId, d.kind == .receipt, let line = snapshot?.statementLines.first(where: { $0.id == lid }),
+               !(snapshot?.statementMatches.contains { $0.expenseId == d.id } ?? false) {
+                try await backend.perform(.addMatch(StatementMatch(workspaceId: ws, statementLineId: lid, expenseId: d.id)))
+                let signed = d.isRefund ? -(d.totalCents ?? 0) : (d.totalCents ?? 0)
+                if ledger.matchedCents(line: lid) + signed == line.amountCents {
+                    try await backend.perform(.setLineStatus(id: lid, status: "matched", reason: nil))
+                }
+            }
+            // 7. From a repeating template: move it to the next due date.
+            if let tid = d.templateId, var t = snapshot?.entryTemplates.first(where: { $0.id == tid }), t.repeat != "none", let due = t.nextDue {
+                t.nextDue = Settlements.advance(due, repeat: t.repeat)
+                try await backend.perform(.saveTemplate(t))
+            }
             store.remove(d.id)
             draftsVersion += 1
             toast = d.kind == .bill ? "Bill saved" : "Receipt saved"
@@ -430,6 +451,160 @@ final class AppModel {
             return s
         }
         return VoiceParser.parse(transcript, projects: ledger.s.projects, vendors: ledger.s.vendors, categories: ledger.activeCategories)
+    }
+
+    // MARK: Inbox, statements, review, cash, sale, materials, templates
+
+    @discardableResult
+    func perform(_ op: PlanningOp, success: String? = nil) async -> Bool {
+        guard let backend else { return false }
+        let ok = await run { try await backend.perform(op) }
+        if ok { if let success { toast = success }; await reload(quiet: true) }
+        return ok
+    }
+
+    /// Imports statement lines; returns how many were new, or nil on failure.
+    func importStatement(_ lines: [StatementLine]) async -> Int? {
+        guard let backend else { return nil }
+        var added = 0
+        guard await run({ added = try await backend.perform(.importLines(lines)) }) else { return nil }
+        toast = added == lines.count ? "\(added) statement lines imported" : "\(added) new lines imported, \(lines.count - added) already in"
+        await reload(quiet: true)
+        return added
+    }
+
+    /// Drops files into the receipt inbox for someone to file later (also used by Share / Open in).
+    @discardableResult
+    func addToInbox(_ files: [PickedFile], note: String = "", source: String = "upload") async -> Bool {
+        guard let backend, let ws = workspace?.id, !files.isEmpty else { return false }
+        let ok = await run {
+            for f in files {
+                let id = UUID()
+                let local = LocalFile(id: id, filename: f.filename, mimeType: f.mimeType, localName: "", size: f.data.count)
+                let path = self.storagePath(ws, local)
+                try await backend.upload(f.data, path: path, mimeType: f.mimeType)
+                let s = self.ledger.suggestFromText("\(note) \(f.filename)")
+                try await backend.perform(.addInbox(InboxItem(id: id, workspaceId: ws, storagePath: path, filename: f.filename, mimeType: f.mimeType,
+                                                              sizeBytes: f.data.count, note: note.trimmingCharacters(in: .whitespaces), source: source,
+                                                              suggestedKind: s.kind, suggestedProjectId: s.projectId, suggestedVendor: s.vendor,
+                                                              suggestedDate: s.date, suggestedTotalCents: s.totalCents, clientId: id)))
+            }
+        }
+        if ok { toast = files.count == 1 ? "Added to the inbox" : "\(files.count) files added to the inbox"; await reload(quiet: true) }
+        return ok
+    }
+
+    /// A file shared or opened into the app ("Open in Project Ledger"): goes to the inbox.
+    func handleOpenedFile(_ url: URL) async {
+        guard phase == .ready else { errorMessage = "Sign in first, then share the file again."; return }
+        let access = url.startAccessingSecurityScopedResource()
+        defer { if access { url.stopAccessingSecurityScopedResource() } }
+        guard let data = try? Data(contentsOf: url) else { errorMessage = "Couldn't read that file."; return }
+        let ext = url.pathExtension.lowercased()
+        let mime = UTType(filenameExtension: ext)?.preferredMIMEType ?? (ext == "pdf" ? "application/pdf" : "application/octet-stream")
+        await addToInbox([PickedFile(data: data, filename: url.lastPathComponent, mimeType: mime, image: nil)], source: "share")
+    }
+
+    /// The category this vendor's latest receipt or bill used, so filing from the inbox or a statement needs one less pick.
+    func usualCategory(_ vendorId: UUID?) -> UUID? {
+        guard let s = snapshot, let vendorId else { return nil }
+        let recs: [(Day, EntryRef)] = s.bills.filter { $0.vendorId == vendorId && !$0.isVoid }.map { ($0.billDate, EntryRef(.bill, $0.id)) }
+            + s.expenses.filter { $0.vendorId == vendorId && !$0.isVoid }.map { ($0.expenseDate, EntryRef(.expense, $0.id)) }
+        for (_, r) in recs.sorted(by: { $0.0 > $1.0 }) {
+            if let a = s.allocations.first(where: { r.kind == .bill ? $0.billId == r.id : $0.expenseId == r.id }) { return a.categoryId }
+        }
+        return nil
+    }
+
+    func payerChoice(_ uid: UUID?) -> TransactionDraft.Payer { uid == nil ? .llc : uid == me ? .me : .partner(uid!) }
+
+    /// Draft for filing an inbox item, from its suggestions.
+    func inboxDraft(_ i: InboxItem) -> TransactionDraft {
+        var d = TransactionDraft()
+        d.kind = i.suggestedKind == "bill" ? .bill : .receipt
+        d.projectId = i.suggestedProjectId
+        if let name = i.suggestedVendor, !name.isEmpty {
+            if let v = ledger.s.vendors.first(where: { $0.name.lowercased() == name.lowercased() }) { d.vendorId = v.id } else { d.newVendorName = name }
+        }
+        if let t = i.suggestedTotalCents { d.totalText = Money.plain(t) }
+        if let day = i.suggestedDate { d.date = day }
+        if d.kind == .bill { d.payer = .llc }
+        d.splits[0].categoryId = usualCategory(d.vendorId)
+        d.description = i.note
+        d.inboxItemId = i.id
+        d.source = "inbox"
+        return d
+    }
+
+    /// Draft receipt for a card charge: amount, date, vendor guess, and the card owner as payer.
+    func lineDraft(_ line: StatementLine, projectId: UUID? = nil, amountCents: Cents? = nil) -> TransactionDraft {
+        var d = TransactionDraft()
+        d.projectId = projectId
+        let v = ledger.vendorFromDescription(line.description)
+        if let id = v.vendorId { d.vendorId = id } else { d.newVendorName = v.name }
+        let amount = amountCents ?? (line.amountCents - ledger.matchedCents(line: line.id))
+        d.totalText = Money.plain(Swift.abs(amount))
+        d.isRefund = amount < 0
+        d.date = line.postedDate
+        d.payer = payerChoice(line.accountOwner)
+        d.paymentMethod = line.accountOwner != nil ? "card" : (line.description.localizedCaseInsensitiveContains("check") ? "check" : "ach")
+        d.splits[0].categoryId = usualCategory(d.vendorId)
+        d.description = line.description
+        d.statementLineId = line.id
+        d.source = "statement"
+        return d
+    }
+
+    /// Draft from a template: today's date, everything else filled in.
+    func templateDraft(_ t: EntryTemplate) -> TransactionDraft {
+        var d = TransactionDraft()
+        d.kind = t.kind == "bill" ? .bill : .receipt
+        d.projectId = t.projectId
+        d.vendorId = t.vendorId
+        if let a = t.amountCents { d.totalText = Money.plain(a) }
+        d.splits[0].categoryId = t.categoryId
+        d.description = t.description
+        d.paymentMethod = t.paymentMethod
+        d.payer = d.kind == .bill ? .llc : payerChoice(t.paidByUserId)
+        if d.kind == .bill, let due = t.nextDue { d.dueDate = due }
+        d.templateId = t.id
+        d.source = "template"
+        return d
+    }
+
+    func matchLine(_ line: StatementLine, refs: [EntryRef]) async -> Bool {
+        guard let backend else { return false }
+        let ok = await run {
+            for r in refs {
+                try await backend.perform(.addMatch(StatementMatch(workspaceId: line.workspaceId, statementLineId: line.id,
+                                                                   expenseId: r.kind == .expense ? r.id : nil, billPaymentId: r.kind == .payment ? r.id : nil)))
+            }
+            // Fully explained: matched. Partly (one of two receipts found so far): stays in the to-match list.
+            let added = refs.reduce(0) { sum, r in
+                if r.kind == .expense, let e = self.ledger.s.expenses.first(where: { $0.id == r.id }) { return sum + e.signedCents }
+                if let p = self.ledger.s.payments.first(where: { $0.id == r.id }) { return sum + (p.kind == "refund" ? -p.amountCents : p.amountCents) }
+                return sum
+            }
+            if self.ledger.matchedCents(line: line.id) + added == line.amountCents {
+                try await backend.perform(.setLineStatus(id: line.id, status: "matched", reason: nil))
+            }
+        }
+        if ok { toast = "Matched"; await reload(quiet: true) }
+        return ok
+    }
+
+    func unmatchLine(_ line: StatementLine) async {
+        guard let backend else { return }
+        let ok = await run {
+            for m in self.ledger.s.statementMatches where m.statementLineId == line.id { try await backend.perform(.removeMatch(id: m.id)) }
+            try await backend.perform(.setLineStatus(id: line.id, status: "unmatched", reason: nil))
+        }
+        if ok { toast = "Match undone"; await reload(quiet: true) }
+    }
+
+    func claim(_ kind: ClaimKind, _ id: UUID) async {
+        guard let ws = workspace?.id, let me else { return }
+        await perform(.claim(Claim(workspaceId: ws, itemKind: kind, itemId: id, claimedBy: me)), success: "Claimed: it’s yours")
     }
 
     // MARK: Demo helpers

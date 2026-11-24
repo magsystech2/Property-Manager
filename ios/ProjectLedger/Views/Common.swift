@@ -118,6 +118,7 @@ struct EntryRow: View {
         case .reimbursement: "arrow.uturn.backward.circle"
         case .contribution: "building.columns"
         case .proceeds: "house.and.flag"
+        case .distribution: "arrow.up.forward.circle"
         case .commitment: "signature"
         case .changeOrder: "plus.forwardslash.minus"
         }

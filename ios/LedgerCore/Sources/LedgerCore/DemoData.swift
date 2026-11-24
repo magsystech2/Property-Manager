@@ -24,9 +24,13 @@ public enum DemoData {
         func cat(_ n: String) -> UUID { s.categories.first { $0.name == n }!.id }
 
         let oak = Project(workspaceId: ws, nickname: "Oak St Flip", address: "123 Oak St", projectType: "flip", status: "active",
-                          startDate: d(-80), targetCompleteDate: d(40), targetSaleDate: d(70))
+                          startDate: d(-80), targetCompleteDate: d(40), targetSaleDate: d(70),
+                          expectedSaleCents: 32_900_000, sellingCostBps: 600, monthlyHoldingCents: 110_000,
+                          loanBalanceCents: 15_000_000, loanRateBps: 1100)
         let pine = Project(workspaceId: ws, nickname: "Pine Rd New Build", address: "Lot 14 Pine Rd", projectType: "new_construction",
-                           status: "active", startDate: d(-50), targetCompleteDate: d(210), targetSaleDate: d(240))
+                           status: "active", startDate: d(-50), targetCompleteDate: d(210), targetSaleDate: d(240),
+                           expectedSaleCents: 48_900_000, sellingCostBps: 550, monthlyHoldingCents: 65_000,
+                           loanBalanceCents: 0, loanRateBps: 0)
         s.projects = [oak, pine]
 
         let budgets: [(Project, String, Cents)] = [
@@ -120,6 +124,45 @@ public enum DemoData {
                        sizeBytes: 96_000, link: EntryRef(.bill, frameBill.id), uploadedBy: partnerA, createdAt: ts(-12)),
             Attachment(workspaceId: ws, storagePath: "\(ws)/demo-check-2001.jpg", filename: "check-2001.jpg", mimeType: "image/jpeg",
                        sizeBytes: 120_000, link: EntryRef(.payment, framePay.id), uploadedBy: partnerB, createdAt: ts(-8)),
+        ]
+        // Planning: cash on hand, scheduled draws, an inbox item and a few card/bank statement lines (same as the web demo).
+        s.cashBalances = [CashBalance(workspaceId: ws, asOf: d(-1), amountCents: 1_200_000, note: "LLC checking", createdBy: partnerA, createdAt: ts(-1))]
+        s.scheduledDraws = [
+            ScheduledDraw(workspaceId: ws, commitmentId: framing.id, dueDate: d(10), amountCents: 300_000, description: "Draw 3: roof framing", createdBy: partnerA, createdAt: ts(-5)),
+            ScheduledDraw(workspaceId: ws, commitmentId: framing.id, dueDate: d(24), amountCents: 300_000, description: "Final draw", createdBy: partnerA, createdAt: ts(-5)),
+        ]
+        s.inboxItems = [InboxItem(workspaceId: ws, storagePath: "\(ws)/demo-inbox-abc-1012.pdf", filename: "ABC-Plumbing-invoice-1012.pdf",
+                                  mimeType: "application/pdf", sizeBytes: 88_000, note: "Oak St final rough-in, $1,850.00", source: "upload",
+                                  suggestedKind: "bill", suggestedProjectId: oak.id, suggestedVendor: "ABC Plumbing", suggestedDate: d(-1),
+                                  suggestedTotalCents: 185_000, createdBy: partnerC, createdAt: ts(-1))]
+        let batch = UUID()
+        func line(_ account: String, _ owner: UUID?, _ day: Int, _ desc: String, _ amount: Cents) -> StatementLine {
+            StatementLine(workspaceId: ws, account: account, accountOwner: owner, postedDate: d(day), description: desc, amountCents: amount,
+                          fingerprint: "\(account)|\(d(day))|\(amount)|\(desc)|1".lowercased(), importBatch: batch, createdBy: partnerA, createdAt: ts(-1))
+        }
+        s.statementLines = [
+            line("Partner B card 7788", partnerB, -19, "LOWE'S #1187 MARIETTA GA", 231_055),
+            line("Madhan card 4421", partnerA, -1, "THE HOME DEPOT #6512 ATLANTA GA", 8_734),
+            line("Madhan card 4421", partnerA, -2, "HOME DEPOT TOOL RENTAL #6512", 12_000),
+            line("LLC checking 0199", nil, -9, "CITY WATER UTIL AUTOPAY", 8_820),
+        ]
+        func material(_ p: Project, _ name: String, _ unit: String, _ bought: Double, _ used: Double, _ returned: Double, _ cost: Cents, _ location: String = "") -> Material {
+            Material(workspaceId: ws, projectId: p.id, name: name, unit: unit, qtyBought: bought, qtyUsed: used, qtyReturned: returned,
+                     unitCostCents: cost, location: location, createdBy: partnerB, createdAt: ts(-10), updatedAt: ts(-2))
+        }
+        s.materials = [
+            material(oak, "LVP flooring", "box", 40, 34, 0, 5_899, "Oak St garage"),
+            material(oak, "Subway tile 3x6", "box", 18, 15, 2, 3_450, "Oak St garage"),
+            material(oak, "Drywall 4x8 1/2\"", "sheet", 60, 60, 0, 1_598),
+            material(pine, "2x4x8 studs", "each", 400, 310, 0, 389, "Pine Rd shed"),
+        ]
+        s.entryTemplates = [
+            EntryTemplate(workspaceId: ws, name: "Oak St builder’s risk insurance", projectId: oak.id, vendorId: title.id, categoryId: cat("Insurance"),
+                          amountCents: 21_000, paymentMethod: "ach", description: "Monthly premium", repeat: "monthly", nextDue: d(3), createdBy: partnerA, createdAt: ts(-40)),
+            EntryTemplate(workspaceId: ws, name: "Oak St water", projectId: oak.id, vendorId: water.id, categoryId: cat("Utilities"),
+                          paymentMethod: "ach", description: "Water and sewer", repeat: "monthly", nextDue: d(21), createdBy: partnerA, createdAt: ts(-40)),
+            EntryTemplate(workspaceId: ws, name: "Home Depot run, Pine Rd", projectId: pine.id, vendorId: homeDepot.id, categoryId: cat("Materials"),
+                          paidByUserId: partnerA, paymentMethod: "card", createdBy: partnerA, createdAt: ts(-30)),
         ]
         return s
     }

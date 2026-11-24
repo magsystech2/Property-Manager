@@ -11,6 +11,11 @@ struct ProjectLedgerApp: App {
             RootView()
                 .environment(app)
                 .task { await app.launch() }
+                // "Share" or "Open in Project Ledger" from Mail, Files or Photos: the file goes to the receipt inbox.
+                .onOpenURL { url in
+                    guard url.isFileURL else { return }
+                    Task { await app.handleOpenedFile(url) }
+                }
                 .onChange(of: scenePhase) { _, phase in
                     if phase == .active, app.phase == .ready {
                         Task { await app.reload(quiet: true); await app.syncPending() }
@@ -125,6 +130,15 @@ enum Route: Hashable {
     case drafts
     case settings
     case export(projectId: UUID?, partnerId: UUID?, vendorId: UUID?)
+    case sale(UUID)
+    case materials(UUID)
+    case inbox
+    case statements
+    case statementLine(UUID)
+    case review
+    case cashPlan
+    case templates
+    case reports
 }
 
 extension View {
@@ -141,6 +155,24 @@ extension View {
                 case .drafts: DraftsView()
                 case .settings: SettingsView()
                 case .export(let p, let partner, let v): ExportView(filter: CSVExport.Filter(projectId: p, partnerId: partner, vendorId: v))
+                case .sale(let id): SaleView(projectId: id)
+                case .materials(let id): MaterialsView(projectId: id)
+                case .inbox: InboxView()
+                case .statements: StatementsView()
+                case .statementLine(let id): StatementLineView(lineId: id)
+                case .review: WeeklyReviewView()
+                case .cashPlan: CashPlanView()
+                case .templates: TemplatesView()
+                case .reports: ReportsView()
+                }
+            }
+            .navigationDestination(for: AnyRoute.self) { r in
+                switch r {
+                case .entry(let ref): EntryDetailView(ref: ref)
+                case .route(.statementLine(let id)): StatementLineView(lineId: id)
+                case .route(.inbox): InboxView()
+                case .route(.statements): StatementsView()
+                default: WeeklyReviewView()
                 }
             }
     }

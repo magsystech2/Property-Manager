@@ -51,6 +51,8 @@ struct HomeView: View {
                 }
             }
 
+            ToolsSection()
+
             Section {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 12)], spacing: 12) {
                     NavigationLink(value: Route.records(title: "Paid on active projects", refs: h.paidActiveSources,
@@ -165,5 +167,40 @@ struct ProjectRow: View {
         }
         .padding(.vertical, 4)
         .accessibilityElement(children: .combine)
+    }
+}
+
+/// Inbox, statements, weekly review, cash plan, recurring costs and reports, with what needs attention.
+struct ToolsSection: View {
+    @Environment(AppModel.self) private var app
+    var body: some View {
+        let l = app.ledger
+        let inbox = l.s.inboxItems.filter { $0.status == "new" }.count
+        let toMatch = l.s.statementLines.filter { $0.status == "unmatched" }.count
+        let due = l.dueTemplates().count
+        let plan = l.cashPlan()
+        Section {
+            row(.review, "Weekly review", "checklist", nil)
+            row(.inbox, "Receipt inbox", "tray", inbox > 0 ? "\(inbox) to file" : nil)
+            row(.statements, "Card and bank statements", "creditcard", toMatch > 0 ? "\(toMatch) to match" : nil)
+            row(.cashPlan, "Cash plan, next 30 days", "calendar", plan.shortfall.map { "Short \(Money.format($0.shortByCents, showCents: false))" }, warn: plan.shortfall != nil)
+            row(.templates, "Recurring and templates", "repeat", due > 0 ? "\(due) due" : nil)
+            row(.reports, "Reports", "chart.bar.xaxis", nil)
+        } header: { Text("Keep up") }
+    }
+
+    func row(_ r: Route, _ title: String, _ icon: String, _ badge: String?, warn: Bool = false) -> some View {
+        NavigationLink(value: r) {
+            HStack {
+                Label(title, systemImage: icon)
+                Spacer()
+                if let badge {
+                    Text(badge).font(.caption.weight(.semibold)).padding(.horizontal, 8).padding(.vertical, 3)
+                        .foregroundStyle(warn ? Color.red : Color.accentColor)
+                        .background((warn ? Color.red : Color.accentColor).opacity(0.12), in: Capsule())
+                }
+            }
+            .frame(minHeight: 44)
+        }
     }
 }

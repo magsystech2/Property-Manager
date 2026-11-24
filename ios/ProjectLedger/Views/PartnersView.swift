@@ -24,6 +24,14 @@ struct PartnersView: View {
             Section {
                 Button { app.sheet = .reimbursement(partnerId: nil) } label: { Label("Reimburse a partner", systemImage: "arrow.uturn.backward.circle").frame(minHeight: 44) }
                 Button { app.sheet = .contribution(projectId: nil) } label: { Label("Add contribution", systemImage: "building.columns").frame(minHeight: 44) }
+                Button { app.sheet = .distribution(projectId: nil, partnerId: nil, amountCents: nil) } label: { Label("Record a distribution", systemImage: "arrow.up.forward.circle").frame(minHeight: 44) }
+                Button { app.sheet = .profitSplit(projectId: nil) } label: {
+                    LabeledContent { Text(app.ledger.profitShares(project: nil).source == .default ? "Set" : "Equal").foregroundStyle(.secondary) } label: {
+                        Label("LLC default profit split", systemImage: "chart.pie")
+                    }
+                    .frame(minHeight: 44)
+                }
+                NavigationLink(value: Route.reports) { Label("Reports", systemImage: "chart.bar.xaxis").frame(minHeight: 44) }
                 NavigationLink(value: Route.export(projectId: nil, partnerId: nil, vendorId: nil)) { Label("Export CSV", systemImage: "square.and.arrow.up").frame(minHeight: 44) }
                 NavigationLink(value: Route.settings) { Label("Settings, members and invites", systemImage: "gearshape").frame(minHeight: 44) }
             }
@@ -82,6 +90,7 @@ struct PartnerDetailView: View {
                 LabeledMoney(label: "LLC still owes", cents: b.owedCents, bold: true)
                 LabeledMoney(label: "Pending reimbursement requests", cents: b.pendingReimbursementCents)
                 LabeledMoney(label: "Capital contributions", cents: b.contributionsCents)
+                if b.distributionsCents != 0 { LabeledMoney(label: "Distributions received", cents: b.distributionsCents) }
             } header: {
                 Text("Balance")
             } footer: {
