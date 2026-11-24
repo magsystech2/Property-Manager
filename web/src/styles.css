@@ -218,3 +218,14 @@ iframe.viewer { height: 70vh; border: 0; }
   .mobile-add-menu { top: auto; position: fixed; left: 12px; right: 12px; bottom: 80px; z-index: 45; padding: 6px; }
 }
 .btn.link.danger { color: var(--bad); }
+
+/* Bulk upload */
+.table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.table th, .table td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+.table th { font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .03em; }
+.table td.num, .table th.num { text-align: right; }
+.import-table { min-width: 860px; }
+.import-table tr.row-bad td { background: var(--bad-soft); }
+.import-table tr.row-done td { opacity: .6; }
+.dropzone { border: 2px dashed var(--border); border-radius: 10px; gap: 10px; color: var(--muted); }
+.dropzone.drag { border-color: var(--accent); background: var(--accent-soft); }

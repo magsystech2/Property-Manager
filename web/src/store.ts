@@ -6,6 +6,7 @@ import { uuid, Money } from './core/money'
 import { emptySnapshot, type Snapshot, type Workspace, type EntryRef, type Project, type Vendor, type ProjectBudget,
   type BudgetCategory, type Member, type Invite, type Expense, type Bill, type Attachment } from './core/models'
 import type { Backend, NewRecord, StatusChange } from './backend/types'
+import { BackendError } from './backend/types'
 import { DemoBackend } from './backend/demo'
 import { SupabaseBackend } from './backend/supabase'
 import { AppConfig } from './config'
@@ -290,6 +291,49 @@ export class AppStore {
       this.showToast(d.kind === 'bill' ? 'Bill saved' : 'Receipt saved')
       await this.reload(true)
     })
+  }
+
+  /**
+   * Bulk upload: posts many receipts and bills, adding new vendors once each. Rows are checked first; a row that
+   * fails doesn't stop the others. Returns the draft ids that were saved and an error per failed one.
+   */
+  async importMany(drafts: TransactionDraft[], onProgress?: (done: number) => void): Promise<{ saved: string[]; failed: Record<string, string> }> {
+    const b = this.backend
+    const ws = this.workspace?.id
+    const saved: string[] = []
+    const failed: Record<string, string> = {}
+    if (!b || !ws) return { saved, failed }
+    const vendorIds = new Map<string, string>()
+    try {
+      for (const [i, d] of drafts.entries()) {
+        try {
+          let vendorId = d.vendor_id
+          if (!vendorId) {
+            const name = d.new_vendor_name.trim()
+            const key = name.toLowerCase()
+            vendorId = vendorIds.get(key) ?? this.snapshot?.vendors.find((v) => v.name.toLowerCase() === key)?.id ?? null
+            if (!vendorId) {
+              await b.saveVendor({ id: d.new_vendor_id, workspace_id: ws, name, kind: d.kind === 'bill' ? 'contractor' : 'supplier',
+                contact_name: '', phone: '', email: '', address: '', notes: '' })
+              vendorId = d.new_vendor_id
+            }
+            vendorIds.set(key, vendorId)
+          }
+          const { expense, bill, allocations } = this.build(d, ws, vendorId)
+          if (expense) await b.postExpense(expense, allocations)
+          if (bill) await b.postBill(bill, allocations)
+          saved.push(d.id)
+        } catch (e) {
+          failed[d.id] = e instanceof Error ? e.message : String(e)
+          if (e instanceof BackendError && e.offline) { for (const r of drafts.slice(i + 1)) failed[r.id] = 'Not saved: no connection.'; break }
+        }
+        onProgress?.(i + 1)
+      }
+    } finally {
+
+      await this.reload(true)
+    }
+    return { saved, failed }
   }
 
   private attachmentRow(ws: string, path: string, f: File, target: AttachTarget | EntryRef, clientId: string): Attachment {

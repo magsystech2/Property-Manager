@@ -18,6 +18,10 @@ npm run build      # production files in dist/
 
 Click **Try the demo** to use sample data kept in that browser only. The purple bar lets you act as a different partner (useful for approvals) or reset the sample data.
 
+## Bulk upload
+
+**Bulk upload** (sidebar, or Add → Bulk upload) adds many receipts and bills from a spreadsheet. Download the template, fill it in with Excel, Numbers or Google Sheets, save it as CSV and choose it. Each row is checked like the Add form: unknown projects, categories, partners or bad dates are marked so you can fix them in the file, new vendors are created, and rows that match an entry already in the books (or an earlier row) are left unchecked. Nothing is saved until you press Import.
+
 ## Connect to Supabase
 
 Use the same Supabase project as the iPhone app (see the root README, section 2). The web app needs the Project URL and the `anon` `public` key from **Project Settings → API**. Either:

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { BrowserRouter, NavLink, Route, Routes, Navigate, useLocation } from 'react-router-dom'
+import { BrowserRouter, NavLink, Route, Routes, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { useStore, store } from './store'
 import { newDraft } from './drafts'
 import { Icon } from './ui/common'
@@ -13,6 +13,7 @@ import { EntryDetailPage } from './pages/EntryDetail'
 import { ExportPage } from './pages/Export'
 import { SettingsPage } from './pages/Settings'
 import { DraftsPage } from './pages/Drafts'
+import { ImportPage } from './pages/Import'
 import { ModalHost } from './forms/ModalHost'
 
 export default function App() {
@@ -51,7 +52,7 @@ function currentProjectId(pathname: string): string | null {
   return m && store.ledger.project(m[1]) ? m[1] : null
 }
 
-const addActions: { label: string; desc: string; icon: string; open: (projectId: string | null) => void }[] = [
+const addActions: { label: string; desc: string; icon: string; open: (projectId: string | null) => void; to?: string }[] = [
   { label: 'Scan receipt', desc: 'Take a photo, then fill in the details', icon: 'camera', open: (pid) => scanReceipt(pid) },
   { label: 'Add expense', desc: 'A receipt, already paid', icon: 'receipt', open: (pid) => store.open({ type: 'transaction', draft: newDraft('receipt', pid) }) },
   { label: 'Add bill', desc: 'An invoice still owed', icon: 'doc', open: (pid) => store.open({ type: 'transaction', draft: newDraft('bill', pid) }) },
@@ -60,11 +61,13 @@ const addActions: { label: string; desc: string; icon: string; open: (projectId:
   { label: 'Add contribution', desc: 'Capital a partner put in', icon: 'bank', open: (pid) => store.open({ type: 'contribution', partnerId: store.me, projectId: pid }) },
   { label: 'Reimburse a partner', desc: 'Pay back personal spending', icon: 'users', open: () => store.open({ type: 'reimbursement' }) },
   { label: 'Add commitment', desc: 'A contract or agreed quote', icon: 'sign', open: (pid) => store.open({ type: 'commitment', projectId: pid }) },
+  { label: 'Bulk upload', desc: 'Many receipts and bills from a spreadsheet', icon: 'tray', open: () => {}, to: '/import' },
 ]
 
 function AddMenu({ mobile, onClose }: { mobile?: boolean; onClose: () => void }) {
   const ref = useRef<HTMLDivElement>(null)
   const loc = useLocation()
+  const go = useNavigate()
   const pid = currentProjectId(loc.pathname)
   useEffect(() => {
     const h = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) onClose() }
@@ -75,7 +78,7 @@ function AddMenu({ mobile, onClose }: { mobile?: boolean; onClose: () => void })
     <div ref={ref} className={`card menu-list ${mobile ? 'mobile-add-menu' : 'add-menu'}`} role="menu">
       {pid && <div className="small muted" style={{ padding: '6px 12px' }}>For {store.ledger.project(pid)?.nickname}</div>}
       {addActions.map((a) => (
-        <button key={a.label} role="menuitem" onClick={() => { a.open(pid); onClose() }}>
+        <button key={a.label} role="menuitem" onClick={() => { if (a.to) go(a.to); else a.open(pid); onClose() }}>
           <Icon name={a.icon} /><span><div style={{ fontWeight: 600 }}>{a.label}</div><div className="desc">{a.desc}</div></span>
         </button>
       ))}
@@ -107,6 +110,7 @@ function Shell() {
         </div>
         {nav.map((n) => <NavLink key={n.to} to={n.to} end={n.end} className="nav-link"><Icon name={n.icon} />{n.label}</NavLink>)}
         <NavLink to="/vendors" className="nav-link"><Icon name="store" />Vendors</NavLink>
+        <NavLink to="/import" className="nav-link"><Icon name="tray" />Bulk upload</NavLink>
         <NavLink to="/export" className="nav-link"><Icon name="download" />Export CSV</NavLink>
         {app.draftList.length > 0 && <NavLink to="/drafts" className="nav-link"><Icon name="tray" />Drafts ({app.draftList.length})</NavLink>}
         <span className="spacer" />
@@ -142,6 +146,7 @@ function Shell() {
             <Route path="/export" element={<ExportPage />} />
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="/drafts" element={<DraftsPage />} />
+            <Route path="/import" element={<ImportPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </main>
