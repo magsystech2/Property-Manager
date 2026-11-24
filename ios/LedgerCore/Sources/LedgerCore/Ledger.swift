@@ -3,7 +3,7 @@ import Foundation
 // MARK: - References to records
 
 public enum EntryKind: String, Codable, CaseIterable, Sendable {
-    case expense, bill, payment, reimbursement, contribution, proceeds, commitment, changeOrder
+    case expense, bill, payment, reimbursement, contribution, proceeds, distribution, commitment, changeOrder
     public var label: String {
         switch self {
         case .expense: "Receipt"
@@ -12,6 +12,7 @@ public enum EntryKind: String, Codable, CaseIterable, Sendable {
         case .reimbursement: "Reimbursement"
         case .contribution: "Contribution"
         case .proceeds: "Sale proceeds"
+        case .distribution: "Distribution"
         case .commitment: "Commitment"
         case .changeOrder: "Change order"
         }
@@ -24,6 +25,7 @@ public enum EntryKind: String, Codable, CaseIterable, Sendable {
         case .reimbursement: "reimbursements"
         case .contribution: "contributions"
         case .proceeds: "sale_proceeds"
+        case .distribution: "distributions"
         case .commitment: "commitments"
         case .changeOrder: "change_orders"
         }
@@ -120,6 +122,8 @@ public struct PartnerBalance: Hashable, Identifiable, Sendable {
     public var contributionsCents: Cents = 0
     public var reimbursedCents: Cents = 0
     public var pendingReimbursementCents: Cents = 0
+    /// Paid out to the partner from sales (return of capital and profit). Doesn't change what's owed for expenses.
+    public var distributionsCents: Cents = 0
     /// What the LLC still owes this partner.
     public var owedCents: Cents { outOfPocketCents - reimbursedCents }
 }
@@ -188,7 +192,7 @@ public struct Ledger: Sendable {
             case .reimbursement: a.reimbursementId == ref.id
             case .contribution: a.contributionId == ref.id
             case .commitment, .changeOrder: a.commitmentId == ref.id
-            case .proceeds: false
+            case .proceeds, .distribution: false
             }
         }
     }
@@ -320,6 +324,9 @@ public struct Ledger: Sendable {
         for c in s.contributions where c.partnerUserId == uid && !c.isVoid && (pid == nil || c.projectId == pid) {
             b.contributionsCents += c.amountCents
         }
+        for d in s.distributions where d.partnerUserId == uid && !d.isVoid && (pid == nil || d.projectId == pid) {
+            b.distributionsCents += d.amountCents
+        }
         if pid == nil {
             for r in s.reimbursements where r.partnerUserId == uid {
                 if r.isPaid { b.reimbursedCents += r.amountCents }
@@ -399,6 +406,14 @@ public struct Ledger: Sendable {
                              invoiceNumber: "", categoryIds: [],
                              status: p.isVoid ? StatusLabel("Void", "xmark.circle", .neutral) : StatusLabel("Recorded", "checkmark.circle.fill", .good),
                              createdBy: p.createdBy, attachmentCount: 0))
+        }
+        for d in s.distributions {
+            out.append(Entry(ref: EntryRef(.distribution, d.id), date: d.distributionDate, title: "Distribution to \(payerName(d.partnerUserId))",
+                             subtitle: ["Distribution", project(d.projectId)?.nickname].compactMap { $0 }.joined(separator: " · "),
+                             amountCents: d.amountCents, projectId: d.projectId, vendorId: nil, partnerId: d.partnerUserId,
+                             invoiceNumber: d.reference, categoryIds: [],
+                             status: d.isVoid ? StatusLabel("Void", "xmark.circle", .neutral) : StatusLabel("Recorded", "checkmark.circle.fill", .good),
+                             createdBy: d.createdBy, attachmentCount: 0))
         }
         for c in s.commitments {
             let st = status(commitment: c)

@@ -87,17 +87,43 @@ public struct Project: Codable, Hashable, Identifiable, Sendable {
     public var targetCompleteDate: Day?
     public var targetSaleDate: Day?
     public var notes: String
+    // Profit forecast inputs (all optional).
+    public var expectedSaleCents: Cents?
+    /// 600 = 6% of the sale price.
+    public var sellingCostBps: Int?
+    public var monthlyHoldingCents: Cents?
+    public var loanBalanceCents: Cents?
+    /// 1100 = 11% a year.
+    public var loanRateBps: Int?
     public init(id: UUID = UUID(), workspaceId: UUID, nickname: String, address: String = "", projectType: String = "flip",
-                status: String = "active", startDate: Day? = nil, targetCompleteDate: Day? = nil, targetSaleDate: Day? = nil, notes: String = "") {
+                status: String = "active", startDate: Day? = nil, targetCompleteDate: Day? = nil, targetSaleDate: Day? = nil, notes: String = "",
+                expectedSaleCents: Cents? = nil, sellingCostBps: Int? = nil, monthlyHoldingCents: Cents? = nil,
+                loanBalanceCents: Cents? = nil, loanRateBps: Int? = nil) {
         self.id = id; self.workspaceId = workspaceId; self.nickname = nickname; self.address = address
         self.projectType = projectType; self.status = status; self.startDate = startDate
         self.targetCompleteDate = targetCompleteDate; self.targetSaleDate = targetSaleDate; self.notes = notes
+        self.expectedSaleCents = expectedSaleCents; self.sellingCostBps = sellingCostBps; self.monthlyHoldingCents = monthlyHoldingCents
+        self.loanBalanceCents = loanBalanceCents; self.loanRateBps = loanRateBps
     }
     public static let types = [("flip", "Flip"), ("new_construction", "New construction")]
     public static let statuses = [("planning", "Planning"), ("active", "Active"), ("listed", "Listed"), ("sold", "Sold"), ("on_hold", "On hold")]
     public var typeLabel: String { Self.types.first { $0.0 == projectType }?.1 ?? projectType }
     public var statusLabel: String { Self.statuses.first { $0.0 == status }?.1 ?? status }
     public var isActive: Bool { status != "sold" }
+}
+
+extension Project {
+    /// Writes every column, nulls included, so clearing a date or a forecast input saves as empty.
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(id, forKey: .id); try c.encode(workspaceId, forKey: .workspaceId); try c.encode(nickname, forKey: .nickname)
+        try c.encode(address, forKey: .address); try c.encode(projectType, forKey: .projectType); try c.encode(status, forKey: .status)
+        try c.encode(startDate, forKey: .startDate); try c.encode(targetCompleteDate, forKey: .targetCompleteDate)
+        try c.encode(targetSaleDate, forKey: .targetSaleDate); try c.encode(notes, forKey: .notes)
+        try c.encode(expectedSaleCents, forKey: .expectedSaleCents); try c.encode(sellingCostBps, forKey: .sellingCostBps)
+        try c.encode(monthlyHoldingCents, forKey: .monthlyHoldingCents); try c.encode(loanBalanceCents, forKey: .loanBalanceCents)
+        try c.encode(loanRateBps, forKey: .loanRateBps)
+    }
 }
 
 public struct ProjectBudget: Codable, Hashable, Sendable {
@@ -377,6 +403,11 @@ public struct SaleProceed: LedgerRecord {
     public var amountCents: Cents
     public var saleDate: Day
     public var notes: String
+    /// Optional sale detail: when the sale price is given, amountCents (net) = gross − selling costs.
+    public var grossPriceCents: Cents?
+    public var sellingCostsCents: Cents?
+    /// Paid to the lender at closing. Not a cost; it only shows how much cash is left to distribute.
+    public var loanPayoffCents: Cents?
     public var status: String
     public var clientId: UUID?
     public var createdBy: UUID?
@@ -385,9 +416,39 @@ public struct SaleProceed: LedgerRecord {
     public var voidedAt: String?
     public var voidReason: String?
     public init(id: UUID = UUID(), workspaceId: UUID, projectId: UUID, amountCents: Cents, saleDate: Day, notes: String = "",
+                grossPriceCents: Cents? = nil, sellingCostsCents: Cents? = nil, loanPayoffCents: Cents? = nil,
                 status: String = RecordStatus.posted, clientId: UUID? = UUID(), createdBy: UUID? = nil, createdAt: String? = nil) {
         self.id = id; self.workspaceId = workspaceId; self.projectId = projectId; self.amountCents = amountCents
+        self.grossPriceCents = grossPriceCents; self.sellingCostsCents = sellingCostsCents; self.loanPayoffCents = loanPayoffCents
         self.saleDate = saleDate; self.notes = notes; self.status = status; self.clientId = clientId
+        self.createdBy = createdBy; self.createdAt = createdAt
+    }
+}
+
+/// Money the LLC pays out to a partner from a project (return of capital and profit). Posted or void, never edited.
+public struct Distribution: LedgerRecord {
+    public var id: UUID
+    public var workspaceId: UUID
+    public var partnerUserId: UUID
+    public var projectId: UUID?
+    public var amountCents: Cents
+    public var distributionDate: Day
+    public var paymentMethod: String
+    public var reference: String
+    public var notes: String
+    public var status: String
+    public var clientId: UUID?
+    public var createdBy: UUID?
+    public var createdAt: String?
+    public var voidedBy: UUID?
+    public var voidedAt: String?
+    public var voidReason: String?
+    public init(id: UUID = UUID(), workspaceId: UUID, partnerUserId: UUID, projectId: UUID?, amountCents: Cents, distributionDate: Day,
+                paymentMethod: String = "ach", reference: String = "", notes: String = "", status: String = RecordStatus.posted,
+                clientId: UUID? = UUID(), createdBy: UUID? = nil, createdAt: String? = nil) {
+        self.id = id; self.workspaceId = workspaceId; self.partnerUserId = partnerUserId; self.projectId = projectId
+        self.amountCents = amountCents; self.distributionDate = distributionDate; self.paymentMethod = paymentMethod
+        self.reference = reference; self.notes = notes; self.status = status; self.clientId = clientId
         self.createdBy = createdBy; self.createdAt = createdAt
     }
 }
@@ -424,7 +485,7 @@ public struct Attachment: Codable, Hashable, Identifiable, Sendable {
         case .reimbursement: reimbursementId = ref.id
         case .contribution: contributionId = ref.id
         case .commitment, .changeOrder: commitmentId = ref.id
-        case .proceeds: break   // sale documents are linked to the project by the caller
+        case .proceeds, .distribution: break   // linked to the project by the caller
         }
     }
     public var isImage: Bool { mimeType.hasPrefix("image/") }
@@ -466,5 +527,17 @@ public struct LedgerSnapshot: Codable, Sendable {
     public var proceeds: [SaleProceed] = []
     public var attachments: [Attachment] = []
     public var audit: [AuditEntry] = []
+    // Planning and review (migration 05)
+    public var inboxItems: [InboxItem] = []
+    public var statementLines: [StatementLine] = []
+    public var statementMatches: [StatementMatch] = []
+    public var claims: [Claim] = []
+    public var scheduledDraws: [ScheduledDraw] = []
+    public var cashBalances: [CashBalance] = []
+    // Sale, profit split, materials, templates (migration 06)
+    public var profitShares: [ProfitShare] = []
+    public var distributions: [Distribution] = []
+    public var materials: [Material] = []
+    public var entryTemplates: [EntryTemplate] = []
     public init(workspace: Workspace) { self.workspace = workspace }
 }

@@ -7,6 +7,7 @@ enum NewRecord {
     case reimbursement(Reimbursement, [ReimbursementItem])
     case contribution(Contribution)
     case proceeds(SaleProceed)
+    case distribution(Distribution)
     case commitment(Commitment)
     case changeOrder(ChangeOrder)
 }
@@ -16,6 +17,32 @@ enum StatusChange {
     case approve                                 // bill / change order -> posted, reimbursement -> approved
     case markPaid(date: Day, method: String, reference: String)   // reimbursement -> paid
     case void(reason: String)
+}
+
+/// Inbox, statements, review, cash plan, profit split, materials and templates (migrations 05 and 06).
+/// Same operations as the web app's backend, so both apps write the same rows.
+enum PlanningOp {
+    case addInbox(InboxItem)
+    case fileInbox(id: UUID, expenseId: UUID?, billId: UUID?)
+    case dismissInbox(id: UUID, reason: String)
+    case reopenInbox(id: UUID)
+    /// Returns how many were new (re-imported rows are skipped by fingerprint).
+    case importLines([StatementLine])
+    case setLineStatus(id: UUID, status: String, reason: String?)
+    case setLineOwner(id: UUID, owner: UUID?)
+    case addMatch(StatementMatch)
+    case removeMatch(id: UUID)
+    case claim(Claim)
+    case releaseClaim(id: UUID)
+    case saveDraw(ScheduledDraw)
+    case deleteDraw(id: UUID)
+    case addCashBalance(CashBalance)
+    /// Empty shares = back to the LLC default (or, for the default itself, to an equal split).
+    case setProfitShares(projectId: UUID?, shares: [Share])
+    case saveMaterial(Material)
+    case deleteMaterial(id: UUID)
+    case saveTemplate(EntryTemplate)
+    case deleteTemplate(id: UUID)
 }
 
 /// Live (Supabase) or demo (in memory). Both must apply the same rules.
@@ -39,6 +66,8 @@ protocol LedgerBackend: AnyObject {
     func post(bill: Bill, allocations: [Allocation]) async throws
     func insert(_ record: NewRecord) async throws
     func change(_ ref: EntryRef, _ change: StatusChange) async throws
+    /// Returns a count for imports, else 0.
+    @discardableResult func perform(_ op: PlanningOp) async throws -> Int
 
     func save(project: Project) async throws
     func save(vendor: Vendor) async throws

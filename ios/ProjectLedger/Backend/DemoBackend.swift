@@ -85,8 +85,17 @@ final class DemoBackend: LedgerBackend {
         case .proceeds(var p):
             guard !snapshot.proceeds.contains(where: { $0.id == p.id }) else { return }
             guard p.amountCents > 0 else { throw LedgerError("Enter an amount greater than zero.") }
+            if let g = p.grossPriceCents, p.amountCents != g - (p.sellingCostsCents ?? 0) {
+                throw LedgerError("Net proceeds must equal the sale price minus selling costs.")
+            }
             p.status = RecordStatus.posted; p.createdBy = actingAs; p.createdAt = now()
             snapshot.proceeds.append(p); audit("sale_proceeds", p.id, "insert")
+        case .distribution(var d):
+            guard !snapshot.distributions.contains(where: { $0.id == d.id }) else { return }
+            guard d.amountCents > 0 else { throw LedgerError("Enter an amount greater than zero.") }
+            try checkPartner(d.partnerUserId)
+            d.status = RecordStatus.posted; d.createdBy = actingAs; d.createdAt = now()
+            snapshot.distributions.append(d); audit("distributions", d.id, "insert")
         case .commitment(var c):
             guard !snapshot.commitments.contains(where: { $0.id == c.id }) else { return }
             guard c.amountCents > 0 else { throw LedgerError("Enter an amount greater than zero.") }
@@ -159,9 +168,139 @@ final class DemoBackend: LedgerBackend {
         case .reimbursement: try apply(&snapshot.reimbursements) { $0.status = $1; $0.voidReason = $2; $0.voidedBy = who; $0.voidedAt = at }
         case .contribution: try apply(&snapshot.contributions) { $0.status = $1; $0.voidReason = $2; $0.voidedBy = who; $0.voidedAt = at }
         case .proceeds: try apply(&snapshot.proceeds) { $0.status = $1; $0.voidReason = $2; $0.voidedBy = who; $0.voidedAt = at }
+        case .distribution: try apply(&snapshot.distributions) { $0.status = $1; $0.voidReason = $2; $0.voidedBy = who; $0.voidedAt = at }
         case .commitment: try apply(&snapshot.commitments) { $0.status = $1; $0.voidReason = $2; $0.voidedBy = who; $0.voidedAt = at }
         case .changeOrder: try apply(&snapshot.changeOrders) { $0.status = $1; $0.voidReason = $2; $0.voidedBy = who; $0.voidedAt = at }
         }
+    }
+
+    // MARK: Inbox, statements, review, cash, sale, materials, templates (same checks as the database)
+
+    @discardableResult
+    func perform(_ op: PlanningOp) async throws -> Int {
+        var result = 0
+        switch op {
+        case .addInbox(var i):
+            guard !snapshot.inboxItems.contains(where: { $0.id == i.id || (i.clientId != nil && $0.clientId == i.clientId) }) else { return 0 }
+            i.status = "new"; i.createdBy = actingAs; i.createdAt = now()
+            snapshot.inboxItems.append(i); audit("inbox_items", i.id, "insert")
+        case .fileInbox(let id, let expenseId, let billId):
+            try updateInbox(id) { i in
+                guard expenseId != nil || billId != nil else { throw LedgerError("File it as a receipt or bill first.") }
+                i.status = "filed"; i.filedExpenseId = expenseId ?? i.filedExpenseId; i.filedBillId = billId ?? i.filedBillId
+            }
+        case .dismissInbox(let id, let reason):
+            try updateInbox(id) { i in
+                guard !reason.trimmingCharacters(in: .whitespaces).isEmpty else { throw LedgerError("Give a reason for dismissing it.") }
+                i.status = "dismissed"; i.dismissReason = reason
+            }
+        case .reopenInbox(let id):
+            try updateInbox(id) { i in i.status = "new"; i.dismissReason = nil }
+        case .importLines(let lines):
+            var have = Set(snapshot.statementLines.map(\.fingerprint))
+            let fresh = lines.filter { have.insert($0.fingerprint).inserted }
+            for l in fresh { try checkPartner(l.accountOwner) }
+            snapshot.statementLines += fresh.map { var l = $0; l.status = "unmatched"; l.createdBy = actingAs; l.createdAt = now(); return l }
+            result = fresh.count
+        case .setLineStatus(let id, let status, let reason):
+            guard let i = snapshot.statementLines.firstIndex(where: { $0.id == id }) else { throw LedgerError("Statement line not found.") }
+            if status == "ignored" && (reason ?? "").trimmingCharacters(in: .whitespaces).isEmpty { throw LedgerError("Give a reason for ignoring it.") }
+            snapshot.statementLines[i].status = status
+            snapshot.statementLines[i].ignoreReason = status == "ignored" ? reason : nil
+            snapshot.statementLines[i].handledBy = actingAs; snapshot.statementLines[i].handledAt = now()
+            audit("statement_lines", id, "update")
+        case .setLineOwner(let id, let owner):
+            guard let i = snapshot.statementLines.firstIndex(where: { $0.id == id }) else { throw LedgerError("Statement line not found.") }
+            try checkPartner(owner)
+            snapshot.statementLines[i].accountOwner = owner
+        case .addMatch(var m):
+            guard let line = snapshot.statementLines.first(where: { $0.id == m.statementLineId }) else { throw LedgerError("Statement line not found.") }
+            guard !snapshot.statementMatches.contains(where: { $0.id == m.id }) else { return 0 }
+            guard (m.expenseId == nil) != (m.billPaymentId == nil) else { throw LedgerError("Match one receipt or one bill payment.") }
+            if snapshot.statementMatches.contains(where: { (m.expenseId != nil && $0.expenseId == m.expenseId) || (m.billPaymentId != nil && $0.billPaymentId == m.billPaymentId) }) {
+                throw LedgerError("That record is already matched to a statement line.")
+            }
+            func amount(_ x: StatementMatch) throws -> Cents {
+                if let eid = x.expenseId {
+                    guard let e = snapshot.expenses.first(where: { $0.id == eid }), e.status == RecordStatus.posted else { throw LedgerError("Only posted records can be matched.") }
+                    return e.signedCents
+                }
+                guard let p = snapshot.payments.first(where: { $0.id == x.billPaymentId }), p.status == RecordStatus.posted else { throw LedgerError("Only posted records can be matched.") }
+                return p.kind == "refund" ? -p.amountCents : p.amountCents
+            }
+            let total = try snapshot.statementMatches.filter { $0.statementLineId == line.id }.reduce(0) { $0 + (try amount($1)) } + amount(m)
+            if Swift.abs(total) > Swift.abs(line.amountCents) { throw LedgerError("Matched records add up to more than the statement line.") }
+            m.createdBy = actingAs; m.createdAt = now()
+            snapshot.statementMatches.append(m); audit("statement_matches", m.id, "insert")
+        case .removeMatch(let id):
+            snapshot.statementMatches.removeAll { $0.id == id }; audit("statement_matches", id, "delete")
+        case .claim(var c):
+            guard c.claimedBy == actingAs else { throw LedgerError("You can only claim items for yourself.") }
+            if let other = snapshot.claims.first(where: { $0.itemKind == c.itemKind && $0.itemId == c.itemId }) {
+                throw LedgerError("\(Ledger(snapshot).payerName(other.claimedBy)) already claimed this.")
+            }
+            c.claimedAt = now(); snapshot.claims.append(c)
+        case .releaseClaim(let id):
+            snapshot.claims.removeAll { $0.id == id }
+        case .saveDraw(var d):
+            guard d.amountCents > 0 else { throw LedgerError("Enter an amount greater than zero.") }
+            if let i = snapshot.scheduledDraws.firstIndex(where: { $0.id == d.id }) { snapshot.scheduledDraws[i] = d }
+            else { d.createdBy = actingAs; d.createdAt = now(); snapshot.scheduledDraws.append(d) }
+        case .deleteDraw(let id):
+            snapshot.scheduledDraws.removeAll { $0.id == id }
+        case .addCashBalance(var b):
+            b.createdBy = actingAs; b.createdAt = now(); snapshot.cashBalances.append(b)
+        case .setProfitShares(let projectId, let shares):
+            for x in shares { try checkPartner(x.partnerUserId) }
+            let total = shares.reduce(0) { $0 + $1.shareBps }
+            if !shares.isEmpty && total != 10000 {
+                throw LedgerError("Profit shares must add up to 100%. These add up to \(String(format: "%.2f", Double(total) / 100))%.")
+            }
+            if shares.contains(where: { $0.shareBps < 0 || $0.shareBps > 10000 }) { throw LedgerError("Each share must be between 0% and 100%.") }
+            let ws = snapshot.workspace.id
+            snapshot.profitShares.removeAll { $0.projectId == projectId }
+            snapshot.profitShares += shares.map { ProfitShare(workspaceId: ws, projectId: projectId, partnerUserId: $0.partnerUserId, shareBps: $0.shareBps) }
+            audit("profit_shares", projectId ?? ws, "update")
+        case .saveMaterial(var m):
+            guard !m.name.trimmingCharacters(in: .whitespaces).isEmpty else { throw LedgerError("Name the material.") }
+            guard m.qtyBought >= 0, m.qtyUsed >= 0, m.qtyReturned >= 0 else { throw LedgerError("Quantities can’t be negative.") }
+            guard m.qtyUsed + m.qtyReturned <= m.qtyBought + 1e-9 else { throw LedgerError("Used plus returned can’t be more than what was bought.") }
+            m.updatedAt = now()
+            if let i = snapshot.materials.firstIndex(where: { $0.id == m.id }) {
+                m.createdBy = snapshot.materials[i].createdBy; m.createdAt = snapshot.materials[i].createdAt
+                snapshot.materials[i] = m; audit("materials", m.id, "update")
+            } else {
+                m.createdBy = actingAs; m.createdAt = now(); snapshot.materials.append(m); audit("materials", m.id, "insert")
+            }
+        case .deleteMaterial(let id):
+            snapshot.materials.removeAll { $0.id == id }; audit("materials", id, "delete")
+        case .saveTemplate(var t):
+            guard !t.name.trimmingCharacters(in: .whitespaces).isEmpty else { throw LedgerError("Name the template.") }
+            if t.repeat != "none" && t.nextDue == nil { throw LedgerError("Pick when it’s next due.") }
+            if let a = t.amountCents, a <= 0 { throw LedgerError("Enter an amount greater than zero, or leave it blank.") }
+            try checkPartner(t.paidByUserId)
+            if let i = snapshot.entryTemplates.firstIndex(where: { $0.id == t.id }) {
+                t.createdBy = snapshot.entryTemplates[i].createdBy; t.createdAt = snapshot.entryTemplates[i].createdAt
+                snapshot.entryTemplates[i] = t; audit("entry_templates", t.id, "update")
+            } else {
+                t.createdBy = actingAs; t.createdAt = now(); snapshot.entryTemplates.append(t); audit("entry_templates", t.id, "insert")
+            }
+        case .deleteTemplate(let id):
+            snapshot.entryTemplates.removeAll { $0.id == id }; audit("entry_templates", id, "delete")
+        }
+        changed()
+        return result
+    }
+
+    private func updateInbox(_ id: UUID, _ body: (inout InboxItem) throws -> Void) throws {
+        guard let i = snapshot.inboxItems.firstIndex(where: { $0.id == id }) else { throw LedgerError("Inbox item not found.") }
+        let cur = snapshot.inboxItems[i]
+        var next = cur
+        try body(&next)
+        if cur.status == "filed" && next.status != "filed" { throw LedgerError("This inbox item was already filed.") }
+        if next.status != cur.status { next.handledBy = actingAs; next.handledAt = now() }
+        snapshot.inboxItems[i] = next
+        audit("inbox_items", id, "update")
     }
 
     private func checkPartner(_ uid: UUID?) throws {

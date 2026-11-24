@@ -15,6 +15,14 @@ enum FormRoute: Identifiable {
     case project(Project?)
     case budget(UUID)
     case vendor(Vendor?)
+    case distribution(projectId: UUID?, partnerId: UUID?, amountCents: Cents?)
+    case profitSplit(projectId: UUID?)
+    case material(LedgerCore.Material?, projectId: UUID)
+    case template(EntryTemplate?)
+    case draw(commitmentId: UUID?, draw: ScheduledDraw?)
+    case cashBalance
+    case importStatement
+    case addToInbox
 
     init(_ a: AddAction, projectId: UUID? = nil) {
         switch a {
@@ -41,6 +49,14 @@ enum FormRoute: Identifiable {
         case .project(let p): "project-\(p?.id.uuidString ?? "new")"
         case .budget(let p): "budget-\(p)"
         case .vendor(let v): "vendor-\(v?.id.uuidString ?? "new")"
+        case .distribution(let p, let u, let a): "dist-\(p?.uuidString ?? "")-\(u?.uuidString ?? "")-\(a ?? 0)"
+        case .profitSplit(let p): "split-\(p?.uuidString ?? "default")"
+        case .material(let m, let p): "material-\(m?.id.uuidString ?? "new")-\(p)"
+        case .template(let t): "template-\(t?.id.uuidString ?? "new")"
+        case .draw(let c, let d): "draw-\(c?.uuidString ?? "")-\(d?.id.uuidString ?? "new")"
+        case .cashBalance: "cash"
+        case .importStatement: "import-statement"
+        case .addToInbox: "add-inbox"
         }
     }
 }
@@ -64,6 +80,14 @@ struct FormHost: View {
         case .project(let p): ProjectForm(project: p, workspace: ws)
         case .budget(let p): BudgetEditor(projectId: p)
         case .vendor(let v): VendorForm(vendor: v, workspace: ws)
+        case .distribution(let p, let u, let a): DistributionForm(projectId: p, partnerId: u, amountCents: a)
+        case .profitSplit(let p): ProfitSplitForm(projectId: p)
+        case .material(let m, let p): MaterialForm(material: m, projectId: p, workspace: ws)
+        case .template(let t): TemplateForm(template: t, workspace: ws)
+        case .draw(let c, let d): DrawForm(commitmentId: c, draw: d)
+        case .cashBalance: CashBalanceForm()
+        case .importStatement: ImportStatementForm()
+        case .addToInbox: AddToInboxSheet()
         }
     }
 }
@@ -96,6 +120,19 @@ struct TransactionForm: View {
                         DisclosureGroup("Text found on the document") { Text(t).font(.caption.monospaced()).textSelection(.enabled) }
                     }
                 }
+            }
+            if let iid = draft.inboxItemId, let item = app.ledger.s.inboxItems.first(where: { $0.id == iid }) {
+                Section {
+                    InboxRow(item: item)
+                } footer: { Text("Filing from the inbox: this file becomes the record's document, and the item leaves the inbox.") }
+            }
+            if let lid = draft.statementLineId, let line = app.ledger.s.statementLines.first(where: { $0.id == lid }) {
+                Section {
+                    StatementLineRow(line: line)
+                } footer: { Text("This receipt will be matched to the statement line above.") }
+            }
+            if draft.templateId != nil {
+                Section { Label("From a template. Check the amount and date before posting.", systemImage: "repeat").font(.callout) }
             }
             if draft.sync == .failed, let m = draft.errorMessage {
                 Section { Label(m, systemImage: "exclamationmark.triangle.fill").foregroundStyle(.red) }
