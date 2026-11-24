@@ -484,7 +484,9 @@ struct CashPlanView: View {
                 if let a = plan.asOf { Text("As of \(Days.display(a))").font(.caption).foregroundStyle(.secondary) }
                 Button { app.sheet = .cashBalance } label: { Label("Update cash on hand", systemImage: "banknote").frame(minHeight: 44) }
                 LabeledMoney(label: "Expected to go out", cents: plan.totalCents, bold: true)
-                if let c = plan.cashOnHandCents { LabeledMoney(label: "Left after that", cents: c - plan.totalCents) }
+                if let c = plan.cashOnHandCents {
+                    LabeledMoney(label: "Left after that", cents: c - plan.totalCents).foregroundStyle(c - plan.totalCents < 0 ? .red : .primary)
+                }
                 if let s = plan.shortfall {
                     Label("Short by \(Money.format(s.shortByCents)) on \(Days.display(s.date)). Plan a contribution or move a payment.", systemImage: "exclamationmark.triangle.fill")
                         .foregroundStyle(.red).font(.callout)

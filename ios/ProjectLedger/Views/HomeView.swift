@@ -121,12 +121,13 @@ struct Tile: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             Label(title, systemImage: symbol).font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
+                .lineLimit(2).minimumScaleFactor(0.8)
             MoneyText(cents: cents, font: .title2.weight(.bold))
                 .minimumScaleFactor(0.6).lineLimit(1)
             HStack {
                 if let detail { Text(detail).font(.caption).foregroundStyle(.secondary) }
                 Spacer()
-                Text("See records").font(.caption.weight(.semibold)).foregroundStyle(Color.accentColor)
+                Text("See records").font(.caption.weight(.semibold)).foregroundStyle(Color.accentColor).lineLimit(1).fixedSize()
                 Image(systemName: "chevron.right").font(.caption2).foregroundStyle(Color.accentColor)
             }
         }

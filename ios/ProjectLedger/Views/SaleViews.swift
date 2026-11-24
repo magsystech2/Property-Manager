@@ -34,6 +34,10 @@ struct CostBasisSection: View {
                     MoneyText(cents: p, font: .title3.weight(.bold)).tone(p)
                 } label: { Text(s.profitIsActual ? "Profit" : "Projected profit").bold() }
             }
+            if !s.profitIsActual, s.profitCents != nil {
+                Text("Projected profit = expected sale price − selling costs − all projected costs (or the budget, if higher) − holding and loan interest until the target sale date. Open the forecast for the breakdown.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
             if let r = s.roiBps { LabeledContent("Return on cost", value: String(format: "%.1f%%", Double(r) / 100)) }
             NavigationLink(value: Route.sale(project.id)) {
                 Label(s.profitIsActual ? "Sale and who gets what" : "Forecast, sale and profit split", systemImage: "chart.line.uptrend.xyaxis")
