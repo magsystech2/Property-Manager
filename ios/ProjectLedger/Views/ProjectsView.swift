@@ -65,6 +65,8 @@ struct ProjectDetailView: View {
                         Button { app.sheet = .budget(p.id) } label: { Label("Edit budget", systemImage: "chart.bar.doc.horizontal") }
                         Button { app.sheet = .commitment(projectId: p.id) } label: { Label("Add commitment", systemImage: "signature") }
                         Button { app.sheet = .proceeds(projectId: p.id) } label: { Label("Record sale proceeds", systemImage: "house.and.flag") }
+                        NavigationLink(value: Route.sale(p.id)) { Label("Sale and profit split", systemImage: "chart.pie") }
+                        NavigationLink(value: Route.materials(p.id)) { Label("Materials", systemImage: "shippingbox") }
                         NavigationLink(value: Route.export(projectId: p.id, partnerId: nil, vendorId: nil)) { Label("Export CSV", systemImage: "square.and.arrow.up") }
                     } label: { Label("More", systemImage: "ellipsis.circle") }
                 }
@@ -109,17 +111,17 @@ struct ProjectDetailView: View {
         } footer: {
             Text("Projected spend = paid + unpaid billed + committed not billed. Remaining = budget − projected spend.")
         }
-        if t.proceedsCents > 0 || p.status == "sold" {
-            Section {
-                link("Sale proceeds", t.proceedsCents, l.s.proceeds.filter { $0.projectId == p.id }.map { EntryRef(.proceeds, $0.id) },
-                     "Recorded sale proceeds. Kept separate from partner contributions.")
-                LabeledMoney(label: "Projected costs", cents: t.projectedCents)
-                LabeledMoney(label: "Profit estimate", cents: t.profitEstimateCents, bold: true)
-                Button { app.sheet = .proceeds(projectId: p.id) } label: { Label("Record sale proceeds", systemImage: "plus") }
-            } header: { Text("Sale") } footer: {
-                Text("Estimate only: recorded proceeds minus recorded and committed costs. Profit splits and taxes are not handled here.")
+        CostBasisSection(project: p)
+        let ms = l.s.materials.filter { $0.projectId == p.id }
+        Section {
+            NavigationLink(value: Route.materials(p.id)) {
+                LabeledContent {
+                    if !ms.isEmpty { Text("\(Money.format(ms.reduce(0) { $0 + $1.leftValueCents })) left over").font(.callout.monospacedDigit()) }
+                } label: {
+                    Label(ms.isEmpty ? "Materials" : "Materials (\(ms.count))", systemImage: "shippingbox").frame(minHeight: 44)
+                }
             }
-        }
+        } footer: { Text("Bought, used, returned and left over, to catch returns and reuse leftovers.") }
         Section {
             let cs = l.s.commitments.filter { $0.projectId == p.id && !$0.isVoid }
             if cs.isEmpty { Text("No contracts recorded.").foregroundStyle(.secondary) }
@@ -137,14 +139,14 @@ struct ProjectDetailView: View {
             }
             Button { app.sheet = .commitment(projectId: p.id) } label: { Label("Add commitment", systemImage: "plus").frame(minHeight: 44) }
         } header: { Text("Contracts and commitments") }
-        let partners = l.s.members.map { l.partnerBalance($0.userId, project: p.id) }.filter { $0.outOfPocketCents != 0 || $0.contributionsCents != 0 }
+        let partners = l.s.members.map { l.partnerBalance($0.userId, project: p.id) }.filter { $0.outOfPocketCents != 0 || $0.contributionsCents != 0 || $0.distributionsCents != 0 }
         if !partners.isEmpty {
             Section("Partner money on this project") {
                 ForEach(partners) { b in
                     NavigationLink(value: Route.partner(b.member.userId)) {
                         VStack(alignment: .leading) {
                             Text(b.member.displayName).font(.headline)
-                            Text("Paid personally \(Money.format(b.outOfPocketCents)) · Contributed \(Money.format(b.contributionsCents))")
+                            Text("Paid personally \(Money.format(b.outOfPocketCents)) · Contributed \(Money.format(b.contributionsCents))\(b.distributionsCents != 0 ? " · Paid out \(Money.format(b.distributionsCents))" : "")")
                                 .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
                         }
                     }
@@ -255,6 +257,15 @@ struct ProjectForm: View {
                     OptionalDayPicker(label: "Target completion", day: $project.targetCompleteDate)
                     OptionalDayPicker(label: "Target sale", day: $project.targetSaleDate)
                 }
+                Section {
+                    AmountField(label: "Expected sale price (ARV)", text: centsBinding(\.expectedSaleCents))
+                    PercentField(label: "Selling costs", bps: $project.sellingCostBps, placeholder: "6")
+                    AmountField(label: "Holding cost per month", text: centsBinding(\.monthlyHoldingCents))
+                    AmountField(label: "Loan balance", text: centsBinding(\.loanBalanceCents))
+                    PercentField(label: "Loan rate per year", bps: $project.loanRateBps, placeholder: "11")
+                } header: { Text("Forecast") } footer: {
+                    Text("Used for projected profit. Selling costs are agent commission and seller closing costs; holding is taxes, insurance and utilities per month.")
+                }
                 Section("Notes") { TextField("Notes", text: $project.notes, axis: .vertical).lineLimit(2...6) }
             }
             .navigationTitle(isNew ? "New project" : "Edit project")
@@ -266,6 +277,38 @@ struct ProjectForm: View {
                         .disabled(project.nickname.trimmingCharacters(in: .whitespaces).isEmpty)
                 }
             }
+        }
+    }
+}
+
+extension ProjectForm {
+    func centsBinding(_ kp: WritableKeyPath<Project, Cents?>) -> Binding<String> {
+        Binding(get: { project[keyPath: kp].map { Money.plain($0) } ?? "" },
+                set: { project[keyPath: kp] = Money.parse($0) })
+    }
+}
+
+/// Percent typed as "6" or "5.5", stored as basis points (600, 550). Blank = not set.
+struct PercentField: View {
+    let label: String
+    @Binding var bps: Int?
+    var placeholder = "0"
+    @State private var text = ""
+    @State private var loaded = false
+    var body: some View {
+        HStack {
+            Text(label)
+            Spacer()
+            TextField(placeholder, text: $text)
+                .keyboardType(.decimalPad).multilineTextAlignment(.trailing).frame(width: 90).font(.body.monospacedDigit())
+                .onChange(of: text) { _, v in bps = Double(v.replacingOccurrences(of: "%", with: "")).map { Int(($0 * 100).rounded()) } }
+            Text("%").foregroundStyle(.secondary)
+        }
+        .frame(minHeight: 44)
+        .onAppear {
+            guard !loaded else { return }
+            loaded = true
+            if let b = bps { text = b % 100 == 0 ? String(b / 100) : String(format: "%.2f", Double(b) / 100) }
         }
     }
 }

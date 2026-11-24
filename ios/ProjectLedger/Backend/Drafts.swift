@@ -51,6 +51,12 @@ struct TransactionDraft: Codable, Identifiable, Hashable {
     var errorMessage: String?
     var updatedAt = Date()
     var transcript: String?
+    /// Filed from the receipt inbox: that file becomes this record's document and the item is marked filed.
+    var inboxItemId: UUID?
+    /// Entered for a card or bank statement line: the new receipt gets matched to it.
+    var statementLineId: UUID?
+    /// Added from a repeating template: its next due date moves on after posting.
+    var templateId: UUID?
 
     var totalCents: Cents? { Money.parse(totalText) }
     var taxCents: Cents { Money.parse(taxText) ?? 0 }

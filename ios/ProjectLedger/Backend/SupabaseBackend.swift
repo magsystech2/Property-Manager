@@ -11,14 +11,24 @@ final class SupabaseBackend: LedgerBackend {
     var userId: UUID? { client.auth.currentUser?.id }
     var userEmail: String? { client.auth.currentUser?.email }
     private var channels: [RealtimeChannelV2] = []
+    /// The workspace last loaded (the profit split RPC needs it).
+    private var currentWorkspace: UUID?
 
     init(url: URL, anonKey: String) {
         let encoder = JSONEncoder()
         encoder.keyEncodingStrategy = .convertToSnakeCase
         let decoder = JSONDecoder()
         decoder.keyDecodingStrategy = .convertFromSnakeCase
+        #if targetEnvironment(macCatalyst)
+        // On the Mac, a locally signed build can't use the keychain without a developer team, so the sign-in
+        // session is kept in a file in this app's Application Support folder instead.
+        client = SupabaseClient(supabaseURL: url, supabaseKey: anonKey,
+                                options: SupabaseClientOptions(db: .init(encoder: encoder, decoder: decoder),
+                                                               auth: .init(storage: FileAuthStorage())))
+        #else
         client = SupabaseClient(supabaseURL: url, supabaseKey: anonKey,
                                 options: SupabaseClientOptions(db: .init(encoder: encoder, decoder: decoder)))
+        #endif
     }
 
     // MARK: Auth
@@ -61,11 +71,12 @@ final class SupabaseBackend: LedgerBackend {
         try await wrap {
             let id = ws.uuidString
             func rows<T: Decodable & Sendable>(_ table: String, _ type: T.Type) async throws -> [T] {
-                try await self.client.from(table).select().eq("workspace_id", value: id).execute().value
+                try await self.client.from(table).select().eq("workspace_id", value: id).limit(10000).execute().value
             }
             let wsRows: [Workspace] = try await self.client.from("workspaces").select().eq("id", value: id).execute().value
             guard let workspace = wsRows.first else { throw BackendError.server("You don't have access to this workspace.") }
             var s = LedgerSnapshot(workspace: workspace)
+            self.currentWorkspace = ws
             async let members = rows("workspace_members", Member.self)
             async let categories = rows("budget_categories", BudgetCategory.self)
             async let projects = rows("projects", Project.self)
@@ -91,6 +102,22 @@ final class SupabaseBackend: LedgerBackend {
             s.allocations = try await allocations; s.payments = try await payments; s.reimbursements = try await reimbursements
             s.reimbursementItems = try await items; s.contributions = try await contributions; s.proceeds = try await proceeds
             s.attachments = try await attachments; s.invites = (try? await invites) ?? []; s.audit = audit
+            // Tables from migrations 05 and 06; an older database without them still loads.
+            async let inbox = rows("inbox_items", InboxItem.self)
+            async let lines = rows("statement_lines", StatementLine.self)
+            async let matches = rows("statement_matches", StatementMatch.self)
+            async let claims = rows("claims", Claim.self)
+            async let draws = rows("scheduled_draws", ScheduledDraw.self)
+            async let cash = rows("cash_balances", CashBalance.self)
+            async let shares = rows("profit_shares", ProfitShare.self)
+            async let distributions = rows("distributions", Distribution.self)
+            async let materials = rows("materials", Material.self)
+            async let templates = rows("entry_templates", EntryTemplate.self)
+            s.inboxItems = (try? await inbox) ?? []; s.statementLines = (try? await lines) ?? []
+            s.statementMatches = (try? await matches) ?? []; s.claims = (try? await claims) ?? []
+            s.scheduledDraws = (try? await draws) ?? []; s.cashBalances = (try? await cash) ?? []
+            s.profitShares = (try? await shares) ?? []; s.distributions = (try? await distributions) ?? []
+            s.materials = (try? await materials) ?? []; s.entryTemplates = (try? await templates) ?? []
             return s
         }
     }
@@ -133,6 +160,7 @@ final class SupabaseBackend: LedgerBackend {
                 }
             case .contribution(let c): try await self.insertOnce("contributions", c)
             case .proceeds(let p): try await self.insertOnce("sale_proceeds", p)
+            case .distribution(let d): try await self.insertOnce("distributions", d)
             case .commitment(let c): try await self.insertOnce("commitments", c)
             case .changeOrder(let c): try await self.insertOnce("change_orders", c)
             }
@@ -159,6 +187,105 @@ final class SupabaseBackend: LedgerBackend {
                     .eq("id", value: ref.id.uuidString).select("id").execute().value
             }
             if updated.isEmpty { throw BackendError.server("You don't have permission to change this record.") }
+        }
+    }
+
+    // MARK: Inbox, statements, review, cash, sale, materials, templates
+
+    /// Sends the given keys with explicit nulls (a plain Encodable struct would leave nil keys out).
+    private struct Patch: Encodable {
+        var values: [String: String?]
+        struct Key: CodingKey {
+            var stringValue: String; var intValue: Int? { nil }
+            init(_ s: String) { stringValue = s }
+            init?(stringValue: String) { self.stringValue = stringValue }
+            init?(intValue: Int) { nil }
+        }
+        func encode(to encoder: Encoder) throws {
+            var c = encoder.container(keyedBy: Key.self)
+            for (k, v) in values { if let v { try c.encode(v, forKey: Key(k)) } else { try c.encodeNil(forKey: Key(k)) } }
+        }
+    }
+    private struct ShareParam: Encodable { let partnerUserId: UUID; let shareBps: Int }
+    private struct SharesParams: Encodable { let pWorkspace: UUID; let pProject: UUID?
+        let pShares: [ShareParam]
+        enum CodingKeys: String, CodingKey { case pWorkspace, pProject, pShares }
+        func encode(to encoder: Encoder) throws {
+            var c = encoder.container(keyedBy: CodingKeys.self)
+            try c.encode(pWorkspace, forKey: .pWorkspace); try c.encode(pProject, forKey: .pProject); try c.encode(pShares, forKey: .pShares)
+        }
+    }
+
+    private func update(_ table: String, _ id: UUID, _ patch: [String: String?], denied: String) async throws {
+        let rows: [IdRow] = try await client.from(table).update(Patch(values: patch)).eq("id", value: id.uuidString).select("id").execute().value
+        if rows.isEmpty { throw BackendError.server(denied) }
+    }
+
+    @discardableResult
+    func perform(_ op: PlanningOp) async throws -> Int {
+        try await wrap {
+            let c = self.client
+            switch op {
+            case .addInbox(var i):
+                i.createdBy = nil; i.createdAt = nil; i.handledBy = nil; i.handledAt = nil
+                try await self.insertOnce("inbox_items", i)
+            case .fileInbox(let id, let expenseId, let billId):
+                var p: [String: String?] = ["status": "filed"]
+                if let expenseId { p["filed_expense_id"] = expenseId.uuidString }
+                if let billId { p["filed_bill_id"] = billId.uuidString }
+                try await self.update("inbox_items", id, p, denied: "You don't have permission to change this inbox item.")
+            case .dismissInbox(let id, let reason):
+                try await self.update("inbox_items", id, ["status": "dismissed", "dismiss_reason": reason], denied: "You don't have permission to change this inbox item.")
+            case .reopenInbox(let id):
+                try await self.update("inbox_items", id, ["status": "new", "dismiss_reason": nil], denied: "You don't have permission to change this inbox item.")
+            case .importLines(let lines):
+                var added = 0
+                for start in stride(from: 0, to: lines.count, by: 500) {
+                    let chunk = lines[start..<min(start + 500, lines.count)].map { l -> StatementLine in
+                        var x = l; x.createdBy = nil; x.createdAt = nil; x.handledBy = nil; x.handledAt = nil; x.ignoreReason = nil; return x
+                    }
+                    let ids: [IdRow] = try await c.from("statement_lines").upsert(Array(chunk), onConflict: "workspace_id,fingerprint", ignoreDuplicates: true)
+                        .select("id").execute().value
+                    added += ids.count
+                }
+                return added
+            case .setLineStatus(let id, let status, let reason):
+                try await self.update("statement_lines", id, ["status": status, "ignore_reason": status == "ignored" ? reason : nil],
+                                      denied: "You don't have permission to change this statement line.")
+            case .setLineOwner(let id, let owner):
+                try await self.update("statement_lines", id, ["account_owner": owner?.uuidString], denied: "You don't have permission to change this statement line.")
+            case .addMatch(var m):
+                m.createdBy = nil; m.createdAt = nil
+                try await c.from("statement_matches").upsert(m, onConflict: "id", ignoreDuplicates: true).execute()
+            case .removeMatch(let id):
+                try await c.from("statement_matches").delete().eq("id", value: id.uuidString).execute()
+            case .claim(var cl):
+                cl.claimedAt = nil
+                try await c.from("claims").insert(cl).execute()
+            case .releaseClaim(let id):
+                try await c.from("claims").delete().eq("id", value: id.uuidString).execute()
+            case .saveDraw(var d):
+                d.createdBy = nil; d.createdAt = nil
+                try await c.from("scheduled_draws").upsert(d, onConflict: "id").execute()
+            case .deleteDraw(let id):
+                try await c.from("scheduled_draws").delete().eq("id", value: id.uuidString).execute()
+            case .addCashBalance(var b):
+                b.createdBy = nil; b.createdAt = nil
+                try await c.from("cash_balances").insert(b).execute()
+            case .setProfitShares(let projectId, let shares):
+                guard let ws = self.currentWorkspace else { throw BackendError.notSignedIn }
+                let p = SharesParams(pWorkspace: ws, pProject: projectId, pShares: shares.map { ShareParam(partnerUserId: $0.partnerUserId, shareBps: $0.shareBps) })
+                try await c.rpc("set_profit_shares", params: p).execute()
+            case .saveMaterial(let m):
+                try await c.from("materials").upsert(m, onConflict: "id").execute()
+            case .deleteMaterial(let id):
+                try await c.from("materials").delete().eq("id", value: id.uuidString).execute()
+            case .saveTemplate(let t):
+                try await c.from("entry_templates").upsert(t, onConflict: "id").execute()
+            case .deleteTemplate(let id):
+                try await c.from("entry_templates").delete().eq("id", value: id.uuidString).execute()
+            }
+            return 0
         }
     }
 
@@ -294,7 +421,28 @@ final class SupabaseBackend: LedgerBackend {
     private func friendly(_ message: String) -> String {
         if message.contains("bills_invoice_uq") { return "That invoice number from this vendor is already entered." }
         if message.contains("vendors_name_uq") { return "A vendor with that name already exists." }
+        if message.contains("claims_workspace_id_item_kind_item_id_key") { return "Someone already claimed this. Refresh to see who." }
+        if message.contains("statement_matches_expense_uq") || message.contains("statement_matches_payment_uq") { return "That record is already matched to a statement line." }
         if message.contains("row-level security") { return "You don't have access to do that in this workspace." }
         return message
     }
 }
+
+#if targetEnvironment(macCatalyst)
+/// Sign-in session storage for the Mac app: one small file per key, readable only by this user.
+struct FileAuthStorage: AuthLocalStorage {
+    private var dir: URL {
+        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        let d = base.appendingPathComponent("ProjectLedger/auth", isDirectory: true)
+        try? FileManager.default.createDirectory(at: d, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+        return d
+    }
+    private func url(_ key: String) -> URL { dir.appendingPathComponent(key.replacingOccurrences(of: "/", with: "_")) }
+    func store(key: String, value: Data) throws {
+        try value.write(to: url(key), options: .atomic)
+        try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url(key).path)
+    }
+    func retrieve(key: String) throws -> Data? { try? Data(contentsOf: url(key)) }
+    func remove(key: String) throws { try? FileManager.default.removeItem(at: url(key)) }
+}
+#endif

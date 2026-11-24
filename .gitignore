@@ -9,3 +9,4 @@ DerivedData/
 xcuserdata/
 .swiftpm/
 supabase/.temp/
+ios/ProjectLedger/Info.plist

@@ -436,28 +436,47 @@ struct ProceedsForm: View {
     let projectId: UUID
     @State private var id = UUID()
     @State private var amount = ""
+    @State private var gross = ""
+    @State private var selling = ""
+    @State private var payoff = ""
     @State private var date = Days.today
     @State private var notes = ""
     @State private var markSold = true
     @State private var busy = false
 
+    /// With a sale price, net = sale price − selling costs; otherwise the net typed in.
+    var netCents: Cents? {
+        if let g = Money.parse(gross), g > 0 { return g - (Money.parse(selling) ?? 0) }
+        return Money.parse(amount)
+    }
+
     var body: some View {
-        FormShell(title: "Sale proceeds", saveTitle: "Save sale proceeds", canSave: (Money.parse(amount) ?? 0) > 0, busy: busy, onSave: save) {
+        FormShell(title: "Sale proceeds", saveTitle: "Save sale proceeds", canSave: (netCents ?? 0) > 0, busy: busy, onSave: save) {
             Section {
                 LabeledContent("Project", value: app.ledger.project(projectId)?.nickname ?? "")
-                AmountField(label: "Net proceeds", text: $amount, big: true)
+                AmountField(label: "Sale price", text: $gross)
+                AmountField(label: "Selling costs", text: $selling)
+                if (Money.parse(gross) ?? 0) > 0 {
+                    LabeledMoney(label: "Net proceeds", cents: netCents ?? 0, bold: true)
+                } else {
+                    AmountField(label: "Net proceeds", text: $amount, big: true)
+                }
+                AmountField(label: "Loan paid off at closing", text: $payoff)
                 DayPicker(label: "Sale date", day: $date)
                 TextField("Notes (closing statement details)", text: $notes, axis: .vertical)
                 if app.ledger.project(projectId)?.status != "sold" { Toggle("Mark the project as sold", isOn: $markSold).frame(minHeight: 44) }
             } footer: {
-                Text("Stored separately from partner contributions. Used for the project's profit estimate.")
+                Text("From the closing statement. Selling costs are commission and seller closing costs. The loan payoff isn't a cost; it only shows how much cash is left to distribute.")
             }
         }
     }
 
     func save() {
-        guard let ws = app.workspace?.id, let cents = Money.parse(amount) else { return }
-        let p = SaleProceed(id: id, workspaceId: ws, projectId: projectId, amountCents: cents, saleDate: date, notes: notes, clientId: id)
+        guard let ws = app.workspace?.id, let cents = netCents else { return }
+        let g = Money.parse(gross).flatMap { $0 > 0 ? $0 : nil }
+        let p = SaleProceed(id: id, workspaceId: ws, projectId: projectId, amountCents: cents, saleDate: date, notes: notes,
+                            grossPriceCents: g, sellingCostsCents: g == nil ? nil : (Money.parse(selling) ?? 0),
+                            loanPayoffCents: Money.parse(payoff).flatMap { $0 > 0 ? $0 : nil }, clientId: id)
         busy = true
         Task {
             if await app.insert(.proceeds(p), success: "Sale proceeds saved") {

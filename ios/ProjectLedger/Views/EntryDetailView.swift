@@ -169,7 +169,24 @@ struct EntryDetailView: View {
                 Section {
                     projectRow(p.projectId)
                     LabeledContent("Sale date", value: Days.display(p.saleDate))
+                    if let g = p.grossPriceCents { LabeledMoney(label: "Sale price", cents: g) }
+                    if let c = p.sellingCostsCents { LabeledMoney(label: "Selling costs", cents: -c) }
+                    LabeledMoney(label: "Net proceeds", cents: p.amountCents, bold: true)
+                    if let lp = p.loanPayoffCents, lp > 0 { LabeledMoney(label: "Loan paid off at closing", cents: lp) }
                     if !p.notes.isEmpty { LabeledContent("Notes", value: p.notes) }
+                }
+            }
+        case .distribution:
+            if let d = l.s.distributions.first(where: { $0.id == ref.id }) {
+                Section {
+                    LabeledContent("Partner", value: l.payerName(d.partnerUserId))
+                    if let pid = d.projectId { projectRow(pid) } else { LabeledContent("Project", value: "LLC-wide") }
+                    LabeledContent("Date", value: Days.display(d.distributionDate))
+                    LabeledContent("Method", value: PaymentMethod(rawValue: d.paymentMethod)?.label ?? d.paymentMethod)
+                    if !d.reference.isEmpty { LabeledContent("Reference", value: d.reference) }
+                    if !d.notes.isEmpty { LabeledContent("Notes", value: d.notes) }
+                } footer: {
+                    Text("Paid out to a partner from a sale: capital back and profit share. Separate from reimbursements for receipts.")
                 }
             }
         case .commitment:
@@ -269,12 +286,35 @@ struct EntryDetailView: View {
                 }
                 .buttonStyle(.borderedProminent)
             }
+            if ref.kind == .expense || ref.kind == .bill, let t = templateFrom(ref) {
+                Button { app.sheet = .template(t) } label: { Label("Save as template (recurring cost)", systemImage: "repeat").frame(minHeight: 44) }
+            }
+            if ref.kind == .commitment, !isVoid {
+                Button { app.sheet = .draw(commitmentId: ref.id, draw: nil) } label: { Label("Schedule a draw (cash plan)", systemImage: "calendar.badge.plus").frame(minHeight: 44) }
+            }
             if !isVoid {
                 Button(role: .destructive) { voiding = true } label: { Label("Void…", systemImage: "xmark.circle").frame(minHeight: 44) }
             }
         } footer: {
             if !isVoid { Text("Posted records can't be edited or deleted. Void with a reason and enter a corrected record instead.") }
         }
+    }
+
+    /// A new template copying a receipt or bill: vendor, project, amount, category, payer.
+    func templateFrom(_ ref: EntryRef) -> EntryTemplate? {
+        let s = app.ledger.s
+        if let e = s.expenses.first(where: { $0.id == ref.id }) {
+            return EntryTemplate(workspaceId: e.workspaceId, name: "\(app.ledger.vendor(e.vendorId)?.name ?? "Receipt"), \(app.ledger.project(e.projectId)?.nickname ?? "")",
+                                 kind: "receipt", projectId: e.projectId, vendorId: e.vendorId,
+                                 categoryId: s.allocations.first { $0.expenseId == e.id }?.categoryId, amountCents: e.totalCents,
+                                 paidByUserId: e.paidByUserId, paymentMethod: e.paymentMethod, description: e.description)
+        }
+        if let b = s.bills.first(where: { $0.id == ref.id }) {
+            return EntryTemplate(workspaceId: b.workspaceId, name: "\(app.ledger.vendor(b.vendorId)?.name ?? "Bill"), \(app.ledger.project(b.projectId)?.nickname ?? "")",
+                                 kind: "bill", projectId: b.projectId, vendorId: b.vendorId,
+                                 categoryId: s.allocations.first { $0.billId == b.id }?.categoryId, amountCents: b.totalCents, description: b.description)
+        }
+        return nil
     }
 
     var recordStatus: String {
@@ -286,6 +326,7 @@ struct EntryDetailView: View {
         case .reimbursement: return s.reimbursements.first { $0.id == ref.id }?.status ?? ""
         case .contribution: return s.contributions.first { $0.id == ref.id }?.status ?? ""
         case .proceeds: return s.proceeds.first { $0.id == ref.id }?.status ?? ""
+        case .distribution: return s.distributions.first { $0.id == ref.id }?.status ?? ""
         case .commitment: return s.commitments.first { $0.id == ref.id }?.status ?? ""
         case .changeOrder: return s.changeOrders.first { $0.id == ref.id }?.status ?? ""
         }
