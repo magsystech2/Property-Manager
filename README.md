@@ -19,6 +19,7 @@ An iPhone app for a three-partner LLC that flips houses and builds new homes. It
 | `supabase/migrations/` | Postgres schema, rules (triggers), row-level security, the private file bucket, live updates |
 | `supabase/tests/` | The six spec workflows plus review, void, audit, access and concurrency tests |
 | `supabase/seed.sql` | Local sample data: three partners, one outsider, two properties |
+| `web/` | Web app (React) on the same Supabase backend, with Docker and Proxmox hosting files. See [`web/README.md`](web/README.md) |
 | `supabase/functions/parse-expense/` | Optional server-side reader for "Say it" (uses Claude). Without it, the app reads speech on the phone |
 
 Money is stored as integer cents everywhere.
@@ -41,7 +42,7 @@ To install on your own iPhone, set your Apple ID team under *Signing & Capabilit
 
 1. Create a free project at [supabase.com](https://supabase.com).
 2. Apply the database. Either:
-   - **SQL editor:** paste and run each file in `supabase/migrations/` in order (`…01_schema`, `…02_rules`, `…03_storage_realtime`, `…04_member_access`), or
+   - **SQL editor:** paste and run each file in `supabase/migrations/` in order (`…01_schema`, `…02_rules`, `…03_storage_realtime`, `…04_member_access`, `…05_inbox_statements_planning`, `…06_sale_distributions_materials_templates`), or
    - **CLI:** `supabase link --project-ref <ref>` and then `supabase db push`.
    Don't run `seed.sql` on the hosted project. It's for local testing only.
 3. **Authentication → Providers → Email:** keep it on. For a three-person team you can turn off "Confirm email", or leave it on and have each partner confirm by email first.
@@ -58,6 +59,10 @@ To install on your own iPhone, set your Apple ID team under *Signing & Capabilit
 3. Each partner installs the app, creates an account with that exact email, enters their name and taps **Join my invitation**.
 4. The owner can change roles, turn on **Require a second partner to approve**, and edit categories in the same screen.
 5. To take away a partner's access (say a partner leaves), the owner taps that partner's role → **Remove access…**. The database stops them seeing or adding any record or file right away. Their past entries and balances stay, so the LLC still shows what it owes them. **Restore** gives access back.
+
+## Web app
+
+`web/` is the same ledger in a browser, for partners on a laptop or Android phone. It uses the same Supabase project, so data and access rules are shared with the iPhone app, and it has its own demo mode. To try it: `cd web && npm install && npm run dev`. To host it on Proxmox with private HTTPS through Tailscale, see [`web/README.md`](web/README.md).
 
 ## 4. Test the workflows
 
