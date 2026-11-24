@@ -191,4 +191,80 @@ select pg_temp.login(:'B');
 
 \echo '== Only an owner can change roles'
 select pg_temp.must_fail(format($q$update public.workspace_members set role = 'owner' where user_id = %L$q$, :'B'), 'owner');
+
+\echo '== Receipt inbox: drop a file in, file it as a receipt, or dismiss with a reason'
+select pg_temp.login(:'A');
+insert into public.inbox_items (id, workspace_id, storage_path, filename, mime_type, suggested_project_id, suggested_vendor, suggested_total_cents)
+select '50000000-0000-0000-0000-000000000001', ws, ws::text || '/inbox-receipt.jpg', 'receipt.jpg', 'image/jpeg', oak, 'Home Depot', 4210 from t;
+insert into public.inbox_items (id, workspace_id, storage_path, filename) select '50000000-0000-0000-0000-000000000002', ws, ws::text || '/inbox-dup.pdf', 'dup.pdf' from t;
+select pg_temp.login(:'B');
+select pg_temp.eq('Partner B sees the shared inbox', (select count(*) from public.inbox_items), 2);
+select pg_temp.must_fail($q$update public.inbox_items set status = 'filed' where id = '50000000-0000-0000-0000-000000000001'$q$, 'check');
+select public.post_with_allocations('expenses',
+  jsonb_build_object('workspace_id', ws, 'project_id', oak, 'vendor_id', home_depot, 'expense_date', '2026-11-22', 'total_cents', 4210,
+                     'paid_by_user_id', :'B', 'payment_method', 'card', 'client_id', '50000000-0000-0000-0000-0000000000e1'),
+  jsonb_build_array(jsonb_build_object('category_id', materials, 'amount_cents', 4210))) as inbox_expense
+from t \gset
+insert into public.attachments (workspace_id, storage_path, filename, mime_type, expense_id) select ws, ws::text || '/inbox-receipt.jpg', 'receipt.jpg', 'image/jpeg', :'inbox_expense' from t;
+update public.inbox_items set status = 'filed', filed_expense_id = :'inbox_expense' where id = '50000000-0000-0000-0000-000000000001';
+select pg_temp.eq('Filed item records who filed it', (select (handled_by = :'B')::int from public.inbox_items where id = '50000000-0000-0000-0000-000000000001'), 1);
+select pg_temp.must_fail($q$update public.inbox_items set status = 'new' where id = '50000000-0000-0000-0000-000000000001'$q$, 'already filed');
+select pg_temp.must_fail($q$update public.inbox_items set storage_path = storage_path || 'x' where id = '50000000-0000-0000-0000-000000000002'$q$, 'can''t be changed');
+select pg_temp.must_fail($q$update public.inbox_items set status = 'dismissed' where id = '50000000-0000-0000-0000-000000000002'$q$, 'check');
+update public.inbox_items set status = 'dismissed', dismiss_reason = 'Duplicate of the Home Depot receipt' where id = '50000000-0000-0000-0000-000000000002';
+delete from public.inbox_items where id = '50000000-0000-0000-0000-000000000002';
+select pg_temp.eq('Inbox items can''t be deleted', (select count(*) from public.inbox_items), 2);
+
+\echo '== Statement matching: import, skip re-imports, match a split trip, ignore with a reason'
+select pg_temp.login(:'A');
+insert into public.statement_lines (id, workspace_id, account, account_owner, posted_date, description, amount_cents, fingerprint, import_batch)
+select '60000000-0000-0000-0000-000000000001', ws, 'Chase 4421', :'A', '2026-11-22', 'HOME DEPOT #123', 10000, 'chase4421|2026-11-22|10000|home depot #123|1', '60000000-0000-0000-0000-0000000000b1' from t;
+insert into public.statement_lines (id, workspace_id, account, posted_date, description, amount_cents, fingerprint, import_batch)
+select '60000000-0000-0000-0000-000000000002', ws, 'LLC checking', '2026-11-23', 'MONTHLY FEE', 1500, 'llc|2026-11-23|1500|monthly fee|1', '60000000-0000-0000-0000-0000000000b1' from t;
+select pg_temp.must_fail(format($q$insert into public.statement_lines (workspace_id, account, posted_date, amount_cents, fingerprint, import_batch) values (%L, 'Chase 4421', '2026-11-22', 10000, 'chase4421|2026-11-22|10000|home depot #123|1', gen_random_uuid())$q$, ws), 'duplicate') from t;
+select pg_temp.must_fail(format($q$insert into public.statement_lines (workspace_id, account, account_owner, posted_date, amount_cents, fingerprint, import_batch) values (%L, 'x', %L, '2026-11-22', 5, 'x', gen_random_uuid())$q$, ws, :'D'), 'not a partner') from t;
+-- One $100 trip split across two properties: $60 Oak, $40 Pine.
+select public.post_with_allocations('expenses',
+  jsonb_build_object('workspace_id', ws, 'project_id', oak, 'vendor_id', home_depot, 'expense_date', '2026-11-22', 'total_cents', 6000,
+                     'paid_by_user_id', :'A', 'payment_method', 'card', 'client_id', '60000000-0000-0000-0000-0000000000e1'),
+  jsonb_build_array(jsonb_build_object('category_id', materials, 'amount_cents', 6000))) as split_oak from t \gset
+select public.post_with_allocations('expenses',
+  jsonb_build_object('workspace_id', ws, 'project_id', pine, 'vendor_id', home_depot, 'expense_date', '2026-11-22', 'total_cents', 4000,
+                     'paid_by_user_id', :'A', 'payment_method', 'card', 'client_id', '60000000-0000-0000-0000-0000000000e2'),
+  jsonb_build_array(jsonb_build_object('category_id', materials, 'amount_cents', 4000))) as split_pine from t \gset
+insert into public.statement_matches (workspace_id, statement_line_id, expense_id) select ws, '60000000-0000-0000-0000-000000000001', :'split_oak' from t;
+insert into public.statement_matches (workspace_id, statement_line_id, expense_id) select ws, '60000000-0000-0000-0000-000000000001', :'split_pine' from t;
+insert into public.statement_lines (id, workspace_id, account, posted_date, amount_cents, fingerprint, import_batch)
+select '60000000-0000-0000-0000-000000000003', ws, 'LLC checking', '2026-11-22', 50000, 'llc|2026-11-22|50000||1', '60000000-0000-0000-0000-0000000000b1' from t;
+select pg_temp.must_fail(format($q$insert into public.statement_matches (workspace_id, statement_line_id, expense_id) values (%L, '60000000-0000-0000-0000-000000000003', %L)$q$, ws, :'split_oak'), 'duplicate') from t;
+select pg_temp.must_fail(format($q$insert into public.statement_matches (workspace_id, statement_line_id, expense_id) values (%L, '60000000-0000-0000-0000-000000000002', %L)$q$, ws, :'inbox_expense'), 'more than the statement line') from t;
+update public.statement_lines set status = 'matched' where id = '60000000-0000-0000-0000-000000000001';
+select pg_temp.must_fail($q$update public.statement_lines set amount_cents = 1 where id = '60000000-0000-0000-0000-000000000001'$q$, 'can''t be edited');
+select pg_temp.must_fail($q$update public.statement_lines set status = 'ignored' where id = '60000000-0000-0000-0000-000000000002'$q$, 'check');
+update public.statement_lines set status = 'ignored', ignore_reason = 'Bank fee, not a project cost' where id = '60000000-0000-0000-0000-000000000002';
+select pg_temp.eq('Split line has two matches', (select count(*) from public.statement_matches where statement_line_id = '60000000-0000-0000-0000-000000000001'), 2);
+delete from public.statement_lines where id = '60000000-0000-0000-0000-000000000002';
+select pg_temp.eq('Statement lines can''t be deleted', (select count(*) from public.statement_lines), 3);
+
+\echo '== Weekly review claims: claim for yourself only; one claim per item; anyone can release'
+insert into public.claims (workspace_id, item_kind, item_id) select ws, 'statement_line', '60000000-0000-0000-0000-000000000002' from t;
+select pg_temp.login(:'B');
+select pg_temp.must_fail(format($q$insert into public.claims (workspace_id, item_kind, item_id) values (%L, 'statement_line', '60000000-0000-0000-0000-000000000002')$q$, ws), 'duplicate') from t;
+select pg_temp.must_fail(format($q$insert into public.claims (workspace_id, item_kind, item_id, claimed_by) values (%L, 'bill', gen_random_uuid(), %L)$q$, ws, :'A'), 'for yourself') from t;
+delete from public.claims where item_id = '60000000-0000-0000-0000-000000000002';
+select pg_temp.eq('Claim released', (select count(*) from public.claims), 0);
+
+\echo '== Cash planning and forecast inputs'
+insert into public.cash_balances (workspace_id, as_of, amount_cents) select ws, '2026-11-23', 2500000 from t;
+update public.cash_balances set amount_cents = 1;
+select pg_temp.eq('Cash history can''t be edited', (select amount_cents from public.cash_balances), 2500000);
+update public.projects set expected_sale_cents = 42000000, selling_cost_bps = 600, monthly_holding_cents = 150000, loan_balance_cents = 25000000, loan_rate_bps = 1100 where id = (select oak from t);
+select pg_temp.must_fail(format($q$update public.projects set selling_cost_bps = 9000 where id = %L$q$, oak), 'check') from t;
+select pg_temp.login(:'D');
+select pg_temp.eq('Outsider sees no inbox', (select count(*) from public.inbox_items), 0);
+select pg_temp.eq('Outsider sees no statements', (select count(*) from public.statement_lines), 0);
+select pg_temp.eq('Outsider sees no cash', (select count(*) from public.cash_balances), 0);
+select pg_temp.must_fail(format($q$insert into public.claims (workspace_id, item_kind, item_id) values (%L, 'bill', gen_random_uuid())$q$, ws), 'row-level security') from t;
+select pg_temp.login(:'B');
+
 reset role;
