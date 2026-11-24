@@ -1,6 +1,6 @@
 # Project Ledger
 
-An iPhone app for a three-partner LLC that flips houses and builds new homes. It tracks what each property costs against its budget, who paid what, what the LLC owes each partner, which bills are due, and where every receipt is.
+An iPhone app and web app for a three-partner LLC that flips houses and builds new homes. It tracks what each property costs against its budget, who paid what, what the LLC owes each partner, which bills are due, and where every receipt is.
 
 - **Fast capture.** Scan a receipt (edge detection and text reading on the phone), import a PDF, pick a photo, say it out loud, or type it. Check the suggested vendor, date, invoice # and total, then post. Or save a draft and finish it later.
 - **Budgets that add up.** Each project has a budget per category. For each category it shows paid, unpaid billed and committed-not-billed amounts. Projected spend is paid + unpaid billed + committed not billed. One receipt or bill can be split across categories, and the split must match the total.
@@ -64,6 +64,21 @@ To install on your own iPhone, set your Apple ID team under *Signing & Capabilit
 
 `web/` is the same ledger in a browser, for partners on a laptop or Android phone. It uses the same Supabase project, so data and access rules are shared with the iPhone app, and it has its own demo mode. To try it: `cd web && npm install && npm run dev`. To host it on Proxmox with private HTTPS through Tailscale, see [`web/README.md`](web/README.md).
 
+The web app also has features the iPhone app doesn't have yet (they need migrations `…05` and `…06`):
+
+| Feature | Where in the web app |
+|---|---|
+| Receipt and invoice inbox: drop files in now, file them later as a receipt or bill | Inbox |
+| Card and bank statement CSV import, matching, split across properties, missing receipts | Statements, Missing receipts |
+| Weekly review with "I'll take it" claims; cash needed in the next 14/30/60 days | Weekly review, Cash needed |
+| Profit forecast with delay and price what-ifs; cost basis, ARV and profit | Project → Forecast, Project → Overview |
+| Sale, profit split (LLC default or per project) and distributions to partners | Project → Sale and split |
+| Materials bought, used, returned and left over | Project → Materials |
+| Recurring costs and templates, "Add again" | Recurring, any receipt or bill |
+| Project P&L, partner activity, budget vs actual | Reports |
+
+The iPhone app is being brought up to match. Until then, partners can use the web app for these and the iPhone app for everyday capture: both see the same data.
+
 ## 4. Test the workflows
 
 **Database (rules and access):** needs a local Postgres 15+.
@@ -88,8 +103,8 @@ supabase/tests/concurrency.sh          # two partners pay the same $1,000 bill a
 
 ## Notes and limits
 
-- Payments are recorded after they happen outside the app. No bank connections, and no money moves.
+- Payments are recorded after they happen outside the app. No direct bank connections (statements come in as CSV files in the web app), and no money moves.
 - Receipts and bills entered offline are kept on the phone and marked "Waiting to sync" until they upload. Other records (payments, reimbursements) need a connection when you save them.
 - Each list loads up to 1,000 rows per table. That's plenty for an MVP. Add paging before it grows past that.
 - Project documents that aren't one transaction (permits, plans, closing papers) go on the project's **Files** tab. Vendor documents (contracts, W-9s, insurance certificates) go on the vendor's page. Neither changes any totals.
-- Profit splits, distributions and tax accounting are not included.
+- Profit splits and distributions are in the web app (Project → Sale and split). Each partner's capital comes back first, then profit is shared by the split. Tax categories, 1099 tracking and accounting exports beyond the CSV are not included.
