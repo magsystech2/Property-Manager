@@ -1,6 +1,6 @@
 import type {
   Allocation, Bill, BillPayment, BudgetCategory, ChangeOrder, Commitment, Contribution, EntryRef, Expense, Invite, Member,
-  Project, ProjectBudget, Reimbursement, ReimbursementItem, SaleProceed, Snapshot, Vendor, Workspace, Attachment, InboxItem, StatementLine, StatementMatch, Claim, ScheduledDraw, CashBalance, Distribution, EntryTemplate, Material, IssueReport, } from '../core/models'
+  Project, ProjectBudget, Reimbursement, ReimbursementItem, SaleProceed, Snapshot, Vendor, Workspace, Attachment, InboxItem, StatementLine, StatementMatch, Claim, ScheduledDraw, CashBalance, Distribution, EntryTemplate, Material, IssueReport, PartnerLoan, PartnerLoanPayment, } from '../core/models'
 import type { Day } from '../core/money'
 
 /** New records other than receipts and bills (those carry a category split). */
@@ -78,6 +78,11 @@ export interface Backend {
   /** Replaces the split for a project (or the LLC default when projectId is null). An empty list goes back to the default. */
   setProfitShares(workspace: string, projectId: string | null, shares: { partner_user_id: string; share_bps: number }[]): Promise<void>
   // Materials and templates (not money; can be edited and removed)
+  // Partner loans (reference only; can be edited and removed)
+  saveLoan(l: PartnerLoan): Promise<void>
+  deleteLoan(id: string): Promise<void>
+  saveLoanPayment(p: PartnerLoanPayment): Promise<void>
+  deleteLoanPayment(id: string): Promise<void>
   saveMaterial(m: Material): Promise<void>
   deleteMaterial(id: string): Promise<void>
   saveTemplate(t: EntryTemplate): Promise<void>

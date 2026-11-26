@@ -4,6 +4,8 @@ import { Money, type Cents } from '../core/money'
 import { poolSummary } from '../core/settlement'
 import type { Ledger } from '../core/ledger'
 import { Section, StatStrip } from './common'
+import { Days } from '../core/money'
+import { loanStatus } from '../core/loans'
 
 const isLoanCategory = (name: string) => /financ|interest|loan|emi|mortgage/i.test(name)
 
@@ -28,8 +30,11 @@ export function MoneyAtAGlance({ projectId, title = 'Who paid what' }: { project
   const loan = loanSummary(l, pid)
   const dist = (uid: string) => l.s.distributions.filter((d) => d.status !== 'void' && d.partner_user_id === uid && (!pid || d.project_id === pid)).reduce((a, d) => a + d.amount_cents, 0)
   const f = (c: Cents) => Money.format(c, false)
+  const loans = (l.s.partner_loans ?? []).filter((x) => !pid || x.project_id === pid).map((x) => loanStatus(x, l.s.partner_loan_payments ?? [], l.today))
+  const borrowed = { owed: loans.reduce((a, x) => a + x.owed_now_cents, 0), count: loans.filter((x) => x.loan.status !== 'closed').length }
   const totals = s.partners.reduce((a, p) => ({ c: a.c + p.contributed_cents, p: a.p + p.paid_personally_cents, r: a.r + p.reimbursed_cents, i: a.i + p.put_in_cents, sh: a.sh + p.share_of_spending_cents, d: a.d + dist(p.member.user_id) }), { c: 0, p: 0, r: 0, i: 0, sh: 0, d: 0 })
   return (
+    <>
     <Section title={title} plain
       action={projectId ? undefined : (
         <select className="compact-select" value={sel} onChange={(e) => setSel(e.target.value)} aria-label="Project">
@@ -40,8 +45,8 @@ export function MoneyAtAGlance({ projectId, title = 'Who paid what' }: { project
       <StatStrip items={[
         { label: 'Total spent', value: f(s.total_spent_cents), note: `${f(s.paid_by_llc_cents)} from LLC account · ${f(s.paid_personally_cents)} by partners` },
         { label: 'Partners put in', value: f(totals.i), note: `${f(s.contributed_cents)} into the LLC account` },
-        { label: 'Borrowed (loan balance)', value: f(loan.balance_cents), note: loan.balance_cents ? `${loan.rates.map((r) => `${r}%`).join(', ')} · ~${f(loan.monthly_interest_cents)}/mo interest` : loan.payoff_cents ? `${f(loan.payoff_cents)} paid off at sale` : 'No loan recorded' },
-        { label: 'Loan & EMI paid', value: f(loan.paid_cents), note: 'Financing and interest costs paid', },
+        { label: 'Project loan (balance)', value: f(loan.balance_cents), note: [loan.balance_cents ? `${loan.rates.map((r) => `${r}%`).join(', ')} · ~${f(loan.monthly_interest_cents)}/mo` : loan.payoff_cents ? `${f(loan.payoff_cents)} paid off at sale` : 'No project loan', loan.paid_cents ? `${f(loan.paid_cents)} EMI/interest paid` : ''].filter(Boolean).join(' · ') },
+        { label: 'Borrowed by partners', value: f(borrowed.owed), tone: borrowed.owed ? 'bad' : undefined, note: borrowed.count ? `Owed now on ${borrowed.count} personal loan${borrowed.count === 1 ? '' : 's'} · see below` : 'No personal loans recorded' },
       ]} />
       <div className="table-wrap glance-table-wrap">
         <table className="table glance">
@@ -84,6 +89,68 @@ export function MoneyAtAGlance({ projectId, title = 'Who paid what' }: { project
         Total put in = into the LLC account + paid personally − paid back. Over / under compares that with each partner’s split of the total spent; a negative number means that partner has covered less than their share so far.
         Left in the LLC account: <b className="num">{f(s.pot_balance_cents)}</b>.{pid ? ' Paid-back amounts aren’t tied to a project, so they only show under All projects.' : ''}
       </div>
+    </Section>
+    <BorrowedSection projectId={pid} />
+    </>
+  )
+}
+
+/** Personal loans partners took to fund their part: lender, initial amount, rate, interest built up and paid, and what's owed now. */
+function BorrowedSection({ projectId }: { projectId: string | null }) {
+  const app = useStore()
+  const l = app.ledger
+  const f = (c: Cents) => Money.format(c, false)
+  const rows = (l.s.partner_loans ?? []).filter((x) => !projectId || x.project_id === projectId)
+    .map((x) => loanStatus(x, l.s.partner_loan_payments ?? [], l.today))
+    .sort((a, b) => l.payerName(a.loan.partner_user_id).localeCompare(l.payerName(b.loan.partner_user_id)) || a.loan.start_date.localeCompare(b.loan.start_date))
+  const sum = (k: 'principal_cents' | 'interest_accrued_cents' | 'interest_paid_cents' | 'principal_repaid_cents' | 'owed_now_cents' | 'monthly_interest_cents') =>
+    rows.reduce((a, r) => a + (k === 'principal_cents' ? r.loan.principal_cents : r[k]), 0)
+  const open = (loan?: typeof rows[number]['loan']) => app.open({ type: 'loan', loan: loan ?? null, projectId })
+  return (
+    <Section title="Borrowed money" plain action={<button className="btn" onClick={() => open()}>+ Add loan</button>}>
+      {rows.length === 0 ? <div className="empty" style={{ borderTop: '2px solid var(--ink)' }}>No personal loans recorded{projectId ? ' for this project' : ''}. Add one when a partner borrows to fund their part.</div> : (
+        <>
+          <div className="table-wrap glance-table-wrap" style={{ marginTop: 0 }}>
+            <table className="table glance">
+              <thead><tr><th>Partner</th><th>Lender</th><th>Used for</th><th>Since</th><th className="num">Initial amount</th><th className="num">Rate</th><th className="num">Interest so far</th><th className="num">Interest paid</th><th className="num">Principal paid back</th><th className="num">Owed now</th><th className="num">Per month</th></tr></thead>
+              <tbody>
+                {rows.map((r) => (
+                  <tr key={r.loan.id} className="clickable" onClick={() => open(r.loan)}>
+                    <td className="bold">{l.payerName(r.loan.partner_user_id)}</td>
+                    <td>{r.loan.lender}{r.loan.status === 'closed' ? <span className="badge neutral" style={{ marginLeft: 6 }}>Paid off</span> : null}</td>
+                    <td>{l.project(r.loan.project_id)?.nickname ?? 'LLC'}</td>
+                    <td className="num">{Days.display(r.loan.start_date)}</td>
+                    <td className="num">{f(r.loan.principal_cents)}</td>
+                    <td className="num">{r.loan.rate_bps / 100}%</td>
+                    <td className="num">{f(r.interest_accrued_cents)}</td>
+                    <td className="num">{f(r.interest_paid_cents)}</td>
+                    <td className="num">{f(r.principal_repaid_cents)}</td>
+                    <td className="num bold">{f(r.owed_now_cents)}</td>
+                    <td className="num">{f(r.monthly_interest_cents)}</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot><tr><td>Total</td><td /><td /><td /><td className="num">{f(sum('principal_cents'))}</td><td /><td className="num">{f(sum('interest_accrued_cents'))}</td><td className="num">{f(sum('interest_paid_cents'))}</td><td className="num">{f(sum('principal_repaid_cents'))}</td><td className="num">{f(sum('owed_now_cents'))}</td><td className="num">{f(sum('monthly_interest_cents'))}</td></tr></tfoot>
+            </table>
+          </div>
+          <div className="glance-cards" style={{ marginTop: 0 }}>
+            {rows.map((r) => (
+              <button key={r.loan.id} className="glance-card plain-btn" onClick={() => open(r.loan)}>
+                <div className="row"><span className="bold">{l.payerName(r.loan.partner_user_id)} · {r.loan.lender}</span><span className="spacer" /><span className="num bold">{f(r.owed_now_cents)} owed</span></div>
+                <div className="gc-grid">
+                  <span>Initial amount</span><span>{f(r.loan.principal_cents)} at {r.loan.rate_bps / 100}%</span>
+                  <span>Since · used for</span><span>{Days.display(r.loan.start_date)} · {l.project(r.loan.project_id)?.nickname ?? 'LLC'}</span>
+                  <span>Interest so far</span><span>{f(r.interest_accrued_cents)}</span>
+                  <span>Interest paid</span><span>{f(r.interest_paid_cents)}</span>
+                  <span>Principal paid back</span><span>{f(r.principal_repaid_cents)}</span>
+                  <span>Per month now</span><span>{f(r.monthly_interest_cents)}</span>
+                </div>
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+      <div className="section-foot">For reference only: this money is already counted as the partner’s contribution or personal payment above, so loans don’t change anyone’s balance or payout. Interest is simple yearly interest from the date borrowed; tap a loan to record interest or principal payments.</div>
     </Section>
   )
 }

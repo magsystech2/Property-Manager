@@ -4,7 +4,7 @@ import { Ledger } from '../core/ledger'
 import { Rules, LedgerError } from '../core/rules'
 import { demoSnapshot, DemoIds } from '../core/demoData'
 import { Days } from '../core/money'
-import { emptySnapshot, type Snapshot, type EntryRef, type Attachment, type InboxItem, type StatementLine, type StatementMatch, type Claim, type ScheduledDraw, type CashBalance, type Material, type EntryTemplate, type IssueReport } from '../core/models'
+import { emptySnapshot, type Snapshot, type EntryRef, type Attachment, type InboxItem, type StatementLine, type StatementMatch, type Claim, type ScheduledDraw, type CashBalance, type Material, type EntryTemplate, type IssueReport, type PartnerLoan, type PartnerLoanPayment } from '../core/models'
 import type { Backend, NewRecord, StatusChange, AllocationInput } from './types'
 import { uuid } from '../core/money'
 
@@ -376,6 +376,36 @@ export class DemoBackend implements Backend {
     this.snapshot.profit_shares = this.snapshot.profit_shares.filter((x) => (x.project_id ?? null) !== projectId)
       .concat(shares.map((x) => ({ id: uuid(), workspace_id: ws, project_id: projectId, ...x })))
     this.audit('profit_shares', projectId ?? ws, 'update')
+    this.changed()
+  }
+  async saveLoan(x: PartnerLoan) {
+    if (!x.lender.trim()) throw new LedgerError('Who lent the money?')
+    if (!(x.principal_cents > 0)) throw new LedgerError('Enter the amount borrowed.')
+    const list = (this.snapshot.partner_loans ??= [])
+    const i = list.findIndex((y) => y.id === x.id)
+    if (i >= 0) list[i] = { ...x, created_by: list[i].created_by, created_at: list[i].created_at, updated_at: this.now() }
+    else list.push({ ...x, created_by: this.actingAs, created_at: this.now(), updated_at: this.now() })
+    this.audit('partner_loans', x.id, i >= 0 ? 'update' : 'insert')
+    this.changed()
+  }
+  async deleteLoan(id: string) {
+    this.snapshot.partner_loans = (this.snapshot.partner_loans ?? []).filter((x) => x.id !== id)
+    this.snapshot.partner_loan_payments = (this.snapshot.partner_loan_payments ?? []).filter((x) => x.loan_id !== id)
+    this.audit('partner_loans', id, 'delete')
+    this.changed()
+  }
+  async saveLoanPayment(p: PartnerLoanPayment) {
+    if (!(p.amount_cents > 0)) throw new LedgerError('Enter the amount paid.')
+    const list = (this.snapshot.partner_loan_payments ??= [])
+    const i = list.findIndex((y) => y.id === p.id)
+    if (i >= 0) list[i] = { ...p, created_by: list[i].created_by, created_at: list[i].created_at }
+    else list.push({ ...p, created_by: this.actingAs, created_at: this.now() })
+    this.audit('partner_loan_payments', p.id, i >= 0 ? 'update' : 'insert')
+    this.changed()
+  }
+  async deleteLoanPayment(id: string) {
+    this.snapshot.partner_loan_payments = (this.snapshot.partner_loan_payments ?? []).filter((x) => x.id !== id)
+    this.audit('partner_loan_payments', id, 'delete')
     this.changed()
   }
   async saveMaterial(m: Material) {

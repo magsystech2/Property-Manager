@@ -459,3 +459,6 @@ a.strip-cell:hover { background: var(--surface-2); text-decoration: none; }
 .glance-card .gc-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 14px; margin-top: 6px; font-size: 13px; }
 .glance-card .gc-grid span:nth-child(odd) { color: var(--muted); }
 .glance-card .gc-grid span:nth-child(even) { text-align: right; font-variant-numeric: tabular-nums; }
+.table tr.clickable { cursor: pointer; }
+.table tr.clickable:hover td { background: var(--surface-2); }
+.plain-btn { display: block; width: 100%; text-align: left; background: none; border: 0; border-bottom: 1px solid var(--border); font: inherit; color: inherit; cursor: pointer; }
