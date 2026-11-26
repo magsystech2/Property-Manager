@@ -214,3 +214,93 @@ export function advance(day: Day, repeat: Repeat | string): Day {
   target.setDate(Math.min(d.getDate(), last))
   return Days.string(target)
 }
+
+// ---------------------------------------------------------------------------
+// Pooled money: who put in what, what was spent, and each partner against their share
+// ---------------------------------------------------------------------------
+
+export interface PartnerShareLine {
+  member: Member
+  /** Lump sums put into the LLC account (the pot). */
+  contributed_cents: Cents
+  /** Receipts and bill payments the partner paid from their own money. */
+  paid_personally_cents: Cents
+  /** Paid back to the partner by the LLC for personal payments. Only counted LLC-wide. */
+  reimbursed_cents: Cents
+  /** contributed + paid personally - reimbursed. */
+  put_in_cents: Cents
+  share_bps: number
+  /** Total spent x this partner's share. */
+  share_of_spending_cents: Cents
+  /** put in - share of spending. Positive: they've covered more than their share. Negative: they owe the others. */
+  over_share_cents: Cents
+}
+
+export interface PoolSummary {
+  /** Every receipt and bill payment, whoever paid it (refunds subtract). */
+  total_spent_cents: Cents
+  paid_by_llc_cents: Cents
+  paid_personally_cents: Cents
+  contributed_cents: Cents
+  reimbursed_cents: Cents
+  proceeds_cents: Cents
+  distributed_cents: Cents
+  /** What's left in the pot: contributions + sale proceeds - LLC payments - reimbursements - distributions. */
+  pot_balance_cents: Cents
+  share_source: ShareSource
+  partners: PartnerShareLine[]
+}
+
+/**
+ * The shared-pot view. Partners put lump sums into the LLC and the LLC pays most costs; sometimes a partner pays
+ * personally. Each partner's money in (contributions + personal payments - reimbursements) is compared with their
+ * share of everything spent, using the profit split (project override, LLC default, else equal).
+ * Loans are not spending and not anyone's money in: only the cash that actually left the pot or a partner's pocket counts.
+ */
+export function poolSummary(l: Ledger, pid: string | null = null): PoolSummary {
+  const live = <T extends { status: string }>(x: T) => x.status !== 'void'
+  const inProject = (p: string | null | undefined) => !pid || p === pid
+  const personal = new Map<string, Cents>()
+  const add = (m: Map<string, Cents>, k: string, v: Cents) => m.set(k, (m.get(k) ?? 0) + v)
+  let llc = 0
+  for (const e of l.s.expenses) {
+    if (!live(e) || !inProject(e.project_id)) continue
+    const v = e.is_refund ? -e.total_cents : e.total_cents
+    if (e.paid_by_user_id) add(personal, e.paid_by_user_id, v); else llc += v
+  }
+  for (const p of l.s.payments) {
+    if (!live(p) || !inProject(l.bill(p.bill_id)?.project_id)) continue
+    const v = p.kind === 'payment' ? p.amount_cents : p.kind === 'refund' ? -p.amount_cents : 0
+    if (p.paid_by_user_id) add(personal, p.paid_by_user_id, v); else llc += v
+  }
+  const contributed = new Map<string, Cents>()
+  for (const c of l.s.contributions) if (live(c) && inProject(c.project_id)) add(contributed, c.partner_user_id, c.amount_cents)
+  const reimbursed = new Map<string, Cents>()
+  if (!pid) for (const r of l.s.reimbursements) if (r.status === 'paid') add(reimbursed, r.partner_user_id, r.amount_cents)
+  const proceeds = l.s.proceeds.filter((x) => live(x) && inProject(x.project_id)).reduce((a, x) => a + x.amount_cents, 0)
+  const distributed = l.s.distributions.filter((x) => live(x) && inProject(x.project_id)).reduce((a, x) => a + x.amount_cents, 0)
+
+  const sum = (m: Map<string, Cents>) => [...m.values()].reduce((a, b) => a + b, 0)
+  const paidPersonally = sum(personal)
+  const total = llc + paidPersonally
+  const { shares, source } = profitShares(l, pid)
+  const ids = new Set([...shares.map((x) => x.partner_user_id), ...personal.keys(), ...contributed.keys(), ...reimbursed.keys()])
+  const people = [...ids].map((uid) => ({ uid, bps: shares.find((x) => x.partner_user_id === uid)?.share_bps ?? 0 }))
+    .sort((a, b) => l.payerName(a.uid).localeCompare(l.payerName(b.uid)))
+  // An equal split in basis points (33.34/33.33/33.33%) is off by dollars on large totals, so split equal shares exactly.
+  const parts = allocate(total, people.map((x) => (source === 'equal' ? (x.bps ? 1 : 0) : x.bps)))
+  const partners = people.map(({ uid, bps }, i): PartnerShareLine => {
+    const member = l.member(uid) ?? { workspace_id: l.s.workspace.id, user_id: uid, role: 'partner', display_name: 'Former partner' }
+    const c = contributed.get(uid) ?? 0, p = personal.get(uid) ?? 0, r = reimbursed.get(uid) ?? 0
+    const putIn = c + p - r
+    return { member, contributed_cents: c, paid_personally_cents: p, reimbursed_cents: r, put_in_cents: putIn, share_bps: bps,
+      share_of_spending_cents: parts[i], over_share_cents: putIn - parts[i] }
+  })
+  const contributedTotal = sum(contributed), reimbursedTotal = sum(reimbursed)
+  return {
+    total_spent_cents: total, paid_by_llc_cents: llc, paid_personally_cents: paidPersonally, contributed_cents: contributedTotal,
+    reimbursed_cents: reimbursedTotal, proceeds_cents: proceeds, distributed_cents: distributed,
+    pot_balance_cents: contributedTotal + proceeds - llc - reimbursedTotal - distributed,
+    share_source: source, partners,
+  }
+}

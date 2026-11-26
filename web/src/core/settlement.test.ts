@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { Ledger } from './ledger'
 import { demoSnapshot, DemoIds } from './demoData'
-import { advance, allocate, basisGroup, costBasis, equalShares, profitShares, settlement } from './settlement'
+import { advance, allocate, basisGroup, costBasis, equalShares, poolSummary, profitShares, settlement } from './settlement'
 
 const today = '2026-11-24'
 const snap = () => demoSnapshot(today)
@@ -77,5 +77,43 @@ describe('repeats', () => {
     expect(advance('2026-11-15', 'quarterly')).toBe('2027-02-15')
     expect(advance('2026-12-01', 'yearly')).toBe('2027-12-01')
     expect(advance('2026-12-01', 'none')).toBe('2026-12-01')
+  })
+})
+
+describe('pooled money', () => {
+  it('compares each partner’s money in with an equal share of everything spent', () => {
+    const s = snap()
+    const oak = oakId(s)
+    const [a, b, c] = [DemoIds.partnerA, DemoIds.partnerB, DemoIds.partnerC]
+    s.expenses = []; s.bills = []; s.payments = []; s.allocations = []; s.reimbursements = []; s.reimbursement_items = []
+    s.contributions = []; s.proceeds = []; s.distributions = []; s.profit_shares = []
+    const base = { workspace_id: s.workspace.id, status: 'posted', payment_method: 'ach', reference: '', notes: '' }
+    const exp = (id: string, cents: number, by: string | null, refund = false) => s.expenses.push({ ...base, id, project_id: oak, vendor_id: s.vendors[0].id,
+      expense_date: today, description: '', total_cents: cents, tax_cents: 0, is_refund: refund, paid_by_user_id: by })
+    s.contributions.push({ ...base, id: 'c1', partner_user_id: a, project_id: oak, amount_cents: 60_000, contribution_date: today })
+    s.contributions.push({ ...base, id: 'c2', partner_user_id: b, project_id: null, amount_cents: 30_000, contribution_date: today })
+    exp('e1', 100_000, null)          // from the pot
+    exp('e2', 10_000, null, true)     // refund back into the pot
+    exp('e3', 30_000, c)              // c paid personally
+    exp('e4', 5_000, b)
+    exp('e5', 999_999, a); s.expenses[s.expenses.length - 1].status = 'void'
+    s.reimbursements.push({ ...base, id: 'r1', partner_user_id: c, amount_cents: 10_000, request_date: today, status: 'paid' })
+    const sum = poolSummary(new Ledger(s, today))
+    expect(sum.total_spent_cents).toBe(125_000)
+    expect(sum.paid_by_llc_cents).toBe(90_000)
+    expect(sum.paid_personally_cents).toBe(35_000)
+    expect(sum.pot_balance_cents).toBe(60_000 + 30_000 - 90_000 - 10_000)
+    expect(sum.share_source).toBe('equal')
+    const by = Object.fromEntries(sum.partners.map((p) => [p.member.user_id, p]))
+    expect(by[a].put_in_cents).toBe(60_000)
+    expect(by[b].put_in_cents).toBe(35_000)
+    expect(by[c].put_in_cents).toBe(20_000)
+    expect(sum.partners.map((p) => p.share_of_spending_cents).sort()).toEqual([41_666, 41_667, 41_667])
+    // Over/under adds up to what's left in the pot: money in that wasn't spent (or, if negative, spending nobody funded).
+    expect(sum.partners.reduce((x, p) => x + p.over_share_cents, 0)).toBe(sum.pot_balance_cents)
+    // Per project: LLC-wide contributions and reimbursements are left out.
+    const proj = poolSummary(new Ledger(s, today), oak)
+    expect(proj.contributed_cents).toBe(60_000)
+    expect(proj.reimbursed_cents).toBe(0)
   })
 })

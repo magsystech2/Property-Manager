@@ -68,6 +68,33 @@ describe('bulk upload', () => {
   })
 
   it('reports missing required columns', () => {
-    expect(readImport(parseCSV('date,amount\n2026-11-20,5'), l, me).missingColumns).toEqual(['project', 'vendor'])
+    expect(readImport(parseCSV('vendor\nx'), l, me).missingColumns).toEqual(['date', 'amount'])
+    expect(readImport(parseCSV('date,amount\n2026-11-20,5'), l, me).rows[0].errors.join(' ')).toContain('Project is missing')
+  })
+
+  it('reads contribution rows: partner in paid_by, no vendor, project optional', () => {
+    const p = l.s.projects[0].nickname
+    const b = l.s.members[1]
+    const csv = [
+      'type,date,project,vendor,category,amount,tax,description,paid_by,payment_method,reference,invoice_number,due_date',
+      `contribution,11/08/2024,${p},,,"$40,283.65",,Down payment share,${b.display_name},wire,,,`,
+      `contribution,2024-11-08,,,,10000,,LLC-wide,,,,,`,
+      `contribution,2024-11-08,,,,-5,,,Stranger,,,,`,
+      `contribution,2024-11-08,,,,10000,,LLC-wide,,,,,`,
+    ].join('\n')
+    const { rows } = readImport(parseCSV(csv), l, me)
+    expect(rows[0].errors).toEqual([])
+    expect(rows[0].draft).toBeNull()
+    expect(rows[0].contribution).toMatchObject({ partner_user_id: b.user_id, project_id: l.s.projects[0].id, amount_cents: 4_028_365, contribution_date: '2024-11-08', payment_method: 'wire' })
+    expect(rows[1].contribution).toMatchObject({ partner_user_id: me, project_id: null, amount_cents: 1_000_000, payment_method: 'ach' })
+    expect(rows[2].contribution).toBeNull()
+    expect(rows[2].errors.length).toBe(2)
+    expect(rows[3].duplicate).toBe(true)
+  })
+
+  it('treats rows with different references as different payments', () => {
+    const p = l.s.projects[0].nickname
+    const csv = ['date,project,vendor,amount,paid_by,reference', `2025-04-30,${p},Belinda,5000,LLC,row 3`, `2025-04-30,${p},Belinda,5000,LLC,row 4`].join('\n')
+    expect(readImport(parseCSV(csv), l, me).rows.map((r) => r.duplicate)).toEqual([false, false])
   })
 })
