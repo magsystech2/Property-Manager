@@ -108,7 +108,7 @@ describe('pooled money', () => {
     expect(by[a].put_in_cents).toBe(60_000)
     expect(by[b].put_in_cents).toBe(35_000)
     expect(by[c].put_in_cents).toBe(20_000)
-    expect(sum.partners.reduce((x, p) => x + p.share_of_spending_cents, 0)).toBe(125_000)
+    expect(sum.partners.map((p) => p.share_of_spending_cents).sort()).toEqual([41_666, 41_667, 41_667])
     // Over/under adds up to what's left in the pot: money in that wasn't spent (or, if negative, spending nobody funded).
     expect(sum.partners.reduce((x, p) => x + p.over_share_cents, 0)).toBe(sum.pot_balance_cents)
     // Per project: LLC-wide contributions and reimbursements are left out.

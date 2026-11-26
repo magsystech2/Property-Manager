@@ -287,7 +287,8 @@ export function poolSummary(l: Ledger, pid: string | null = null): PoolSummary {
   const ids = new Set([...shares.map((x) => x.partner_user_id), ...personal.keys(), ...contributed.keys(), ...reimbursed.keys()])
   const people = [...ids].map((uid) => ({ uid, bps: shares.find((x) => x.partner_user_id === uid)?.share_bps ?? 0 }))
     .sort((a, b) => l.payerName(a.uid).localeCompare(l.payerName(b.uid)))
-  const parts = allocate(total, people.map((x) => x.bps))
+  // An equal split in basis points (33.34/33.33/33.33%) is off by dollars on large totals, so split equal shares exactly.
+  const parts = allocate(total, people.map((x) => (source === 'equal' ? (x.bps ? 1 : 0) : x.bps)))
   const partners = people.map(({ uid, bps }, i): PartnerShareLine => {
     const member = l.member(uid) ?? { workspace_id: l.s.workspace.id, user_id: uid, role: 'partner', display_name: 'Former partner' }
     const c = contributed.get(uid) ?? 0, p = personal.get(uid) ?? 0, r = reimbursed.get(uid) ?? 0
