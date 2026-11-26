@@ -197,5 +197,13 @@ export function demoSnapshot(today: Day = Days.today): Snapshot {
     { id: uuid(), workspace_id: ws, name: 'Home Depot run, Pine Rd', kind: 'receipt', project_id: pine.id, vendor_id: homeDepot.id, category_id: cat('Materials'),
       amount_cents: null, paid_by_user_id: partnerA, payment_method: 'card', description: '', repeat: 'none', next_due: null, active: true, created_by: partnerA, created_at: ts(-30) },
   ]
+  const loanB = uuid(), loanC = uuid()
+  s.partner_loans = [
+    { id: loanB, workspace_id: ws, partner_user_id: partnerB, project_id: pine.id, lender: 'Friends', principal_cents: 5_000_000, rate_bps: 1000, start_date: d(-200), status: 'open', notes: 'For the Pine Rd lot', created_by: partnerB, created_at: ts(-200) },
+    { id: loanC, workspace_id: ws, partner_user_id: partnerC, project_id: oak.id, lender: 'Uncle', principal_cents: 2_000_000, rate_bps: 1200, start_date: d(-120), status: 'open', notes: '', created_by: partnerC, created_at: ts(-120) },
+  ]
+  s.partner_loan_payments = [
+    { id: uuid(), workspace_id: ws, loan_id: loanB, paid_on: d(-20), amount_cents: 150_000, kind: 'interest', note: 'Interest so far', created_by: partnerB, created_at: ts(-20) },
+  ]
   return s
 }

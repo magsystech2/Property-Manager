@@ -325,4 +325,24 @@ select pg_temp.login(:'D');
 select pg_temp.eq('Outsider sees no reports', (select count(*) from public.issue_reports), 0);
 select pg_temp.login(:'B');
 
+\echo '== Partner loans: reference only, any partner records and edits; outsiders see nothing'
+select pg_temp.login(:'B');
+insert into public.partner_loans (id, workspace_id, partner_user_id, project_id, lender, principal_cents, rate_bps, start_date)
+select '90000000-0000-0000-0000-000000000001', ws, :'C', oak, 'Kaka', 5000000, 1000, '2025-06-01' from t;
+select pg_temp.eq('Loan recorded for another partner', (select (created_by = :'B' and status = 'open')::int from public.partner_loans), 1);
+select pg_temp.must_fail(format($q$insert into public.partner_loans (workspace_id, partner_user_id, lender, principal_cents, start_date) values (%L, %L, 'x', 100, '2025-01-01')$q$, ws, :'D'), 'not a partner') from t;
+select pg_temp.must_fail(format($q$insert into public.partner_loans (workspace_id, partner_user_id, lender, principal_cents, start_date) values (%L, %L, ' ', 100, '2025-01-01')$q$, ws, :'C'), 'check') from t;
+insert into public.partner_loan_payments (workspace_id, loan_id, paid_on, amount_cents, kind)
+select ws, '90000000-0000-0000-0000-000000000001', '2025-12-01', 250000, 'interest' from t;
+select pg_temp.login(:'A');
+update public.partner_loans set rate_bps = 1200, notes = 'Rate changed';
+select pg_temp.eq('Any partner edits; creator kept', (select (rate_bps = 1200 and created_by = :'B')::int from public.partner_loans), 1);
+select pg_temp.login(:'D');
+select pg_temp.eq('Outsider sees no loans', (select count(*) from public.partner_loans), 0);
+select pg_temp.eq('Outsider sees no loan payments', (select count(*) from public.partner_loan_payments), 0);
+select pg_temp.login(:'A');
+delete from public.partner_loans;
+select pg_temp.eq('Deleting a loan removes its payments', (select count(*) from public.partner_loan_payments), 0);
+select pg_temp.login(:'B');
+
 reset role;

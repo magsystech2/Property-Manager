@@ -4,7 +4,7 @@ import { Ledger } from './core/ledger'
 import { Rules, LedgerError } from './core/rules'
 import { uuid, Money } from './core/money'
 import { emptySnapshot, type Snapshot, type Workspace, type EntryRef, type Project, type Vendor, type ProjectBudget,
-  type BudgetCategory, type Member, type Invite, type Expense, type Bill, type Attachment , type InboxItem, type StatementLine, type Claim, type ClaimKind, type ScheduledDraw, type EntryTemplate, type Material, type IssueReport, type IssueCategory } from './core/models'
+  type BudgetCategory, type Member, type Invite, type Expense, type Bill, type Attachment , type InboxItem, type StatementLine, type Claim, type ClaimKind, type ScheduledDraw, type EntryTemplate, type Material, type IssueReport, type IssueCategory, type PartnerLoan, type PartnerLoanPayment } from './core/models'
 import type { Backend, NewRecord, StatusChange } from './backend/types'
 import { BackendError } from './backend/types'
 import { DemoBackend } from './backend/demo'
@@ -46,6 +46,7 @@ export type Modal =
   | { type: 'markPaid'; ref: EntryRef }
   | { type: 'attach'; target: AttachTarget }
   | { type: 'report'; ref?: EntryRef | null; error?: string | null }
+  | { type: 'loan'; loan?: PartnerLoan | null; projectId?: string | null }
 
 function safeName(name: string) {
   return name.replace(/[^A-Za-z0-9.-]/g, '-')
@@ -521,6 +522,10 @@ export class AppStore {
     if (!ws) return Promise.resolve(false)
     return this.simple((b) => b.setProfitShares(ws, projectId, shares), shares.length ? 'Profit split saved' : 'Back to the default split')
   }
+  saveLoan(x: PartnerLoan) { return this.simple((b) => b.saveLoan(x), 'Loan saved') }
+  deleteLoan(id: string) { return this.simple((b) => b.deleteLoan(id), 'Loan removed') }
+  saveLoanPayment(p: PartnerLoanPayment) { return this.simple((b) => b.saveLoanPayment(p), 'Payment saved') }
+  deleteLoanPayment(id: string) { return this.simple((b) => b.deleteLoanPayment(id), 'Payment removed') }
   saveMaterial(m: Material) { return this.simple((b) => b.saveMaterial(m), 'Material saved') }
   deleteMaterial(id: string) { return this.simple((b) => b.deleteMaterial(id), 'Material removed') }
   saveTemplate(t: EntryTemplate, quiet = false) { return this.simple((b) => b.saveTemplate(t), quiet ? undefined : 'Template saved') }

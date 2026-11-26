@@ -391,6 +391,36 @@ export interface IssueReport {
   created_at?: string | null
 }
 
+/** A loan a partner took personally (from a friend, family or a bank) to fund their part. Reference only: the money is
+ * already in the books as that partner's contribution or personal payment, so loans never change balances. */
+export interface PartnerLoan {
+  id: string
+  workspace_id: string
+  partner_user_id: string
+  project_id?: string | null
+  lender: string
+  principal_cents: Cents
+  /** Simple interest a year, in basis points (1000 = 10%). */
+  rate_bps: number
+  start_date: Day
+  status: 'open' | 'closed' | string
+  notes: string
+  created_by?: string | null
+  created_at?: string | null
+  updated_at?: string | null
+}
+export interface PartnerLoanPayment {
+  id: string
+  workspace_id: string
+  loan_id: string
+  paid_on: Day
+  amount_cents: Cents
+  kind: 'interest' | 'principal' | string
+  note: string
+  created_by?: string | null
+  created_at?: string | null
+}
+
 export interface Snapshot {
   workspace: Workspace
   members: Member[]
@@ -422,6 +452,8 @@ export interface Snapshot {
   materials: Material[]
   entry_templates: EntryTemplate[]
   issue_reports: IssueReport[]
+  partner_loans: PartnerLoan[]
+  partner_loan_payments: PartnerLoanPayment[]
 }
 
 export function emptySnapshot(workspace: Workspace): Snapshot {
@@ -430,7 +462,7 @@ export function emptySnapshot(workspace: Workspace): Snapshot {
     change_orders: [], bills: [], expenses: [], allocations: [], payments: [], reimbursements: [],
     reimbursement_items: [], contributions: [], proceeds: [], attachments: [], audit: [],
     inbox_items: [], statement_lines: [], statement_matches: [], claims: [], scheduled_draws: [], cash_balances: [],
-    profit_shares: [], distributions: [], materials: [], entry_templates: [], issue_reports: [],
+    profit_shares: [], distributions: [], materials: [], entry_templates: [], issue_reports: [], partner_loans: [], partner_loan_payments: [],
   }
 }
 
