@@ -39,6 +39,37 @@ public struct EntryRef: Hashable, Codable, Sendable, Identifiable {
 }
 
 /// One row in Activity: any financial record, flattened for display and search.
+/// A search word, and the amount it names if it looks like one ("412.50", "$1,250", "412"). Same rules as the web app.
+public struct SearchTerm: Equatable, Sendable {
+    public var text: String
+    public var cents: Cents?
+    public var wholeDollars: Bool
+
+    public static func parse(_ q: String) -> [SearchTerm] {
+        q.lowercased().split(whereSeparator: { $0.isWhitespace }).map { sub in
+            let text = String(sub)
+            let ns = text as NSString
+            guard let m = amountPattern.firstMatch(in: text, range: NSRange(location: 0, length: ns.length)) else {
+                return SearchTerm(text: text, cents: nil, wholeDollars: false)
+            }
+            let number = ns.substring(with: m.range(at: 1))
+            let value = Decimal(string: number.replacingOccurrences(of: ",", with: "")) ?? 0
+            let cents = NSDecimalNumber(decimal: value * 100).rounding(accordingToBehavior: nil).intValue
+            let shown = text.hasPrefix("$") ? String(text.dropFirst()) : text
+            return SearchTerm(text: shown, cents: cents, wholeDollars: !number.contains("."))
+        }
+    }
+    // swiftlint:disable:next force_try
+    private static let amountPattern = try! NSRegularExpression(pattern: #"^-?\$?((?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d{1,2})?|\.\d{1,2})$"#)
+
+    /// "412.5" finds $412.50 exactly; "412" finds $412.00 to $412.99; refunds and credits match by size.
+    public func matches(amount: Cents) -> Bool {
+        guard let cents else { return false }
+        let a = Swift.abs(amount)
+        return wholeDollars ? (a / 100) * 100 == cents : a == cents
+    }
+}
+
 public struct Entry: Identifiable, Hashable, Sendable {
     public var ref: EntryRef
     public var id: UUID { ref.id }
@@ -466,7 +497,8 @@ public struct Ledger: Sendable {
     }
 
     public func search(_ f: Filter) -> [Entry] {
-        let q = f.text.trimmingCharacters(in: .whitespaces).lowercased()
+        let terms = SearchTerm.parse(f.text)
+        let files = terms.isEmpty ? [:] : attachmentNamesByRef()
         return entries().filter { e in
             if !f.kinds.isEmpty && !f.kinds.contains(e.ref.kind) { return false }
             if let p = f.projectId, e.projectId != p { return false }
@@ -476,12 +508,55 @@ public struct Ledger: Sendable {
             if let st = f.statusText, e.status.text != st { return false }
             if let from = f.from, e.date < from { return false }
             if let to = f.to, e.date > to { return false }
-            if q.isEmpty { return true }
-            let hay = [e.title, e.subtitle, e.invoiceNumber, Money.plain(e.amountCents), Money.format(e.amountCents),
-                       project(e.projectId)?.nickname ?? "", vendor(e.vendorId)?.name ?? "", payerName(e.partnerId),
-                       e.status.text, e.date] + e.categoryIds.compactMap { category($0)?.name }
-            return hay.joined(separator: " ").lowercased().contains(q)
+            if terms.isEmpty { return true }
+            let hay = searchText(e, files: files[e.ref] ?? [])
+            // Every word must match (in the text, or as an amount).
+            return terms.allSatisfy { hay.contains($0.text) || $0.matches(amount: e.amountCents) }
         }
+    }
+
+    /// Everything a record can be found by: names, amounts, dates, references, descriptions, notes and attached file names.
+    public func searchText(_ e: Entry, files: [String]? = nil) -> String {
+        var fields: [String] = []
+        if let rec = recordValue(e.ref) {
+            let wanted: Set<String> = ["description", "notes", "reference", "invoiceNumber", "voidReason", "paymentMethod", "scope", "title"]
+            for child in Mirror(reflecting: rec).children {
+                guard let label = child.label, wanted.contains(label) else { continue }
+                if let v = child.value as? String { fields.append(v) } else if let v = child.value as? String? { fields.append(v ?? "") }
+            }
+        }
+        let names = files ?? (attachmentNamesByRef()[e.ref] ?? [])
+        let p = project(e.projectId)
+        let parts = [e.title, e.subtitle, e.invoiceNumber, Money.plain(e.amountCents), Money.format(e.amountCents),
+                     p?.nickname ?? "", p?.address ?? "", vendor(e.vendorId)?.name ?? "", payerName(e.partnerId),
+                     e.status.text, e.date, Days.display(e.date)] + fields + names + e.categoryIds.compactMap { category($0)?.name }
+        return parts.joined(separator: " \u{1} ").lowercased()
+    }
+
+    /// The stored record behind an entry, for reading its text fields.
+    private func recordValue(_ ref: EntryRef) -> Any? {
+        switch ref.kind {
+        case .expense: s.expenses.first { $0.id == ref.id }
+        case .bill: s.bills.first { $0.id == ref.id }
+        case .payment: s.payments.first { $0.id == ref.id }
+        case .reimbursement: s.reimbursements.first { $0.id == ref.id }
+        case .contribution: s.contributions.first { $0.id == ref.id }
+        case .proceeds: s.proceeds.first { $0.id == ref.id }
+        case .distribution: s.distributions.first { $0.id == ref.id }
+        case .commitment: s.commitments.first { $0.id == ref.id }
+        case .changeOrder: s.changeOrders.first { $0.id == ref.id }
+        }
+    }
+
+    private func attachmentNamesByRef() -> [EntryRef: [String]] {
+        var d: [EntryRef: [String]] = [:]
+        for a in s.attachments {
+            let ref: EntryRef? = a.expenseId.map { EntryRef(.expense, $0) } ?? a.billId.map { EntryRef(.bill, $0) }
+                ?? a.billPaymentId.map { EntryRef(.payment, $0) } ?? a.reimbursementId.map { EntryRef(.reimbursement, $0) }
+                ?? a.contributionId.map { EntryRef(.contribution, $0) } ?? a.commitmentId.map { EntryRef(.commitment, $0) }
+            if let ref { d[ref, default: []].append(a.filename) }
+        }
+        return d
     }
 
     public func entry(_ ref: EntryRef) -> Entry? { entries().first { $0.ref == ref } }

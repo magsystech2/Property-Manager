@@ -19,7 +19,16 @@ final class AppModel {
     var isSyncing = false
     var lastSynced: Date?
     var toast: String?
-    var errorMessage: String?
+    var errorMessage: String? {
+        didSet { if let e = errorMessage { lastError = (e, Date()) } }
+    }
+    /// The last error shown, so a report can include it after the alert is dismissed.
+    private(set) var lastError: (text: String, at: Date)?
+    /// An error shown in the last 15 minutes, offered on a new issue report.
+    var recentError: String? {
+        guard let e = lastError, Date().timeIntervalSince(e.at) < 15 * 60 else { return nil }
+        return e.text
+    }
     /// Bumped when drafts or pending uploads change, so views refresh.
     var draftsVersion = 0
     /// The form or capture screen currently shown as a sheet (any screen can open one).
@@ -166,6 +175,43 @@ final class AppModel {
             return false
         }
     }
+
+    // MARK: Issue reports
+
+    /// Sends a report with an optional screenshot. The screen, device and last error are added for whoever fixes it.
+    @discardableResult
+    func reportIssue(category: IssueCategory, note: String, ref: EntryRef?, error: String?, page: String,
+                     screenshot: Data?) async -> Bool {
+        guard let backend, let ws = workspace?.id else { return false }
+        let text = note.trimmingCharacters(in: .whitespacesAndNewlines)
+        let ok = await run {
+            guard !text.isEmpty else { throw LedgerError("Say what's wrong.") }
+            let id = UUID()
+            var path: String?
+            if let screenshot {
+                path = "\(ws.uuidString.lowercased())/reports/\(id.uuidString.lowercased())-screenshot.jpg"
+                try await backend.upload(screenshot, path: path!, mimeType: "image/jpeg")
+            }
+            let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? ""
+            let device = "Project Ledger \(version) (\(UIDevice.current.model); \(UIDevice.current.systemName) \(UIDevice.current.systemVersion))"
+            try await backend.perform(.addIssue(IssueReport(
+                id: id, workspaceId: ws, category: category.rawValue, note: text, recordKind: ref?.kind, recordId: ref?.id,
+                page: page, errorText: String((error ?? "").prefix(2000)), userAgent: String(device.prefix(300)),
+                screenshotPath: path, screenshotName: screenshot == nil ? nil : "screenshot.jpg", clientId: id)))
+        }
+        if ok { toast = "Report sent. It's in Issues for any partner to pick up."; await reload(quiet: true) }
+        return ok
+    }
+
+    @discardableResult
+    func setIssue(_ r: IssueReport, resolved: Bool, resolution: String? = nil) async -> Bool {
+        guard let backend else { return false }
+        let ok = await run { try await backend.perform(.setIssueStatus(id: r.id, resolved: resolved, resolution: resolution)) }
+        if ok { toast = resolved ? "Marked resolved" : "Reopened"; await reload(quiet: true) }
+        return ok
+    }
+
+    func fileURL(path: String) async -> URL? { try? await backend?.fileURL(path: path) }
 
     // MARK: Drafts
 

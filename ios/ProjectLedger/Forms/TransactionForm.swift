@@ -23,6 +23,7 @@ enum FormRoute: Identifiable {
     case cashBalance
     case importStatement
     case addToInbox
+    case report(ref: EntryRef?, error: String?, page: String)
 
     init(_ a: AddAction, projectId: UUID? = nil) {
         switch a {
@@ -57,6 +58,7 @@ enum FormRoute: Identifiable {
         case .cashBalance: "cash"
         case .importStatement: "import-statement"
         case .addToInbox: "add-inbox"
+        case .report(let r, _, _): "report-\(r?.id.uuidString ?? "app")"
         }
     }
 }
@@ -88,6 +90,7 @@ struct FormHost: View {
         case .cashBalance: CashBalanceForm()
         case .importStatement: ImportStatementForm()
         case .addToInbox: AddToInboxSheet()
+        case .report(let r, let e, let p): ReportForm(ref: r, error: e, page: p)
         }
     }
 }
