@@ -329,7 +329,7 @@ struct SettingsView: View {
                 if app.isDemo {
                     Button("Leave demo and connect live sync") { showLiveSetup = true }.frame(minHeight: 44)
                     Button("Reset sample data", role: .destructive) { Task { await app.resetDemo() } }.frame(minHeight: 44)
-                } else {
+                } else if !AppConfig.isBuiltIn {
                     Button("Live sync settings") { showLiveSetup = true }.frame(minHeight: 44)
                 }
                 Button(app.isDemo ? "Exit demo" : "Sign out", role: .destructive) { confirmSignOut = true }.frame(minHeight: 44)
