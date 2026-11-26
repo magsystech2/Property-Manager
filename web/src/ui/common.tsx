@@ -369,3 +369,72 @@ export function StatStrip({ items }: { items: StripItem[] }) {
     </div>
   )
 }
+
+// ---------------------------------------------------------------------------
+// Click-to-edit table cell. Click (or Enter/Space when focused) to edit; Enter or leaving the cell saves,
+// Escape cancels. Only for reference data that may be overwritten (every change is still audited);
+// posted money is never edited in place.
+// ---------------------------------------------------------------------------
+export type EditKind = 'text' | 'money' | 'percent' | 'date' | 'select'
+
+export function EditCell({ value, kind = 'text', display, onSave, options, className, style, title = 'Click to edit', disabled }: {
+  value: string | number | null
+  kind?: EditKind
+  display?: ReactNode
+  /** Return false (or throw) to keep the editor open. */
+  onSave: (v: string | number | null) => Promise<boolean | void> | boolean | void
+  options?: [string, string][]
+  className?: string
+  style?: React.CSSProperties
+  title?: string
+  disabled?: boolean
+}) {
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState('')
+  const [busy, setBusy] = useState(false)
+  const ref = useRef<HTMLInputElement & HTMLSelectElement>(null)
+  const toText = (v: typeof value): string => {
+    if (v === null || v === undefined) return ''
+    if (kind === 'money') return Money.plain(Number(v))
+    if (kind === 'percent') return String(Number(v) / 100)
+    return String(v)
+  }
+  const parse = (t: string): { ok: boolean; v: string | number | null } => {
+    const s = t.trim()
+    if (kind === 'money') { const c = Money.parse(s); return { ok: c !== null && c >= 0, v: c } }
+    if (kind === 'percent') { const n = Number(s.replace('%', '')); return { ok: s !== '' && Number.isFinite(n) && n >= 0 && n <= 100, v: Math.round(n * 100) } }
+    if (kind === 'date') return { ok: /^\d{4}-\d{2}-\d{2}$/.test(s), v: s }
+    return { ok: true, v: s }
+  }
+  useEffect(() => { if (editing) { ref.current?.focus(); if (kind !== 'select' && kind !== 'date') ref.current?.select() } }, [editing, kind])
+  const start = (e: React.SyntheticEvent) => { e.stopPropagation(); if (disabled || busy) return; setDraft(toText(value)); setEditing(true) }
+  const commit = async () => {
+    if (busy) return
+    const p = parse(draft)
+    if (!p.ok) { setEditing(false); return }
+    if (p.v === value || (kind !== 'money' && kind !== 'percent' && String(p.v ?? '') === toText(value))) { setEditing(false); return }
+    setBusy(true)
+    try { const r = await onSave(p.v); if (r !== false) setEditing(false) } finally { setBusy(false) }
+  }
+  const keys = (e: React.KeyboardEvent) => {
+    e.stopPropagation()
+    if (e.key === 'Enter') { e.preventDefault(); void commit() }
+    if (e.key === 'Escape') { e.preventDefault(); setEditing(false) }
+  }
+  if (editing) {
+    const common = { ref, className: 'edit-input', value: draft, disabled: busy, onKeyDown: keys, onBlur: () => void commit(), onClick: (e: React.MouseEvent) => e.stopPropagation() }
+    return (
+      <td className={`${className ?? ''} editing`} style={style}>
+        {kind === 'select'
+          ? <select {...common} onChange={(e) => setDraft(e.target.value)}>{(options ?? []).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select>
+          : <input {...common} type={kind === 'date' ? 'date' : 'text'} inputMode={kind === 'money' || kind === 'percent' ? 'decimal' : undefined} onChange={(e) => setDraft(e.target.value)} />}
+      </td>
+    )
+  }
+  return (
+    <td className={`${className ?? ''} ${disabled ? '' : 'editable'}`} style={style} title={disabled ? undefined : title} tabIndex={disabled ? undefined : 0}
+      onClick={start} onKeyDown={(e) => { if (!disabled && (e.key === 'Enter' || e.key === ' ')) start(e) }}>
+      {display ?? toText(value)}
+    </td>
+  )
+}
