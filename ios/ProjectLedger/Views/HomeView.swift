@@ -180,6 +180,7 @@ struct ToolsSection: View {
         let toMatch = l.s.statementLines.filter { $0.status == "unmatched" }.count
         let due = l.dueTemplates().count
         let plan = l.cashPlan()
+        let issues = l.s.issueReports.filter(\.isOpen).count
         Section {
             row(.review, "Weekly review", "checklist", nil)
             row(.inbox, "Receipt inbox", "tray", inbox > 0 ? "\(inbox) to file" : nil)
@@ -187,6 +188,10 @@ struct ToolsSection: View {
             row(.cashPlan, "Cash plan, next 30 days", "calendar", plan.shortfall.map { "Short \(Money.format($0.shortByCents, showCents: false))" }, warn: plan.shortfall != nil)
             row(.templates, "Recurring and templates", "repeat", due > 0 ? "\(due) due" : nil)
             row(.reports, "Reports", "chart.bar.xaxis", nil)
+            row(.issues, "Reported issues", "exclamationmark.bubble", issues > 0 ? "\(issues) open" : nil, warn: issues > 0)
+            Button { app.sheet = .report(ref: nil, error: nil, page: "Home") } label: {
+                Label("Report an issue", systemImage: "exclamationmark.bubble").frame(minHeight: 44)
+            }
         } header: { Text("Keep up") }
     }
 

@@ -44,6 +44,10 @@ enum PlanningOp {
     case deleteMaterial(id: UUID)
     case saveTemplate(EntryTemplate)
     case deleteTemplate(id: UUID)
+    // Issue reports (migration 08). Never change money.
+    case addIssue(IssueReport)
+    /// Resolve (with an optional note of what was done) or reopen.
+    case setIssueStatus(id: UUID, resolved: Bool, resolution: String?)
 }
 
 /// Live (Supabase) or demo (in memory). Both must apply the same rules.

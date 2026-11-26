@@ -294,6 +294,9 @@ struct EntryDetailView: View {
             if ref.kind == .commitment, !isVoid {
                 Button { app.sheet = .draw(commitmentId: ref.id, draw: nil) } label: { Label("Schedule a draw (cash plan)", systemImage: "calendar.badge.plus").frame(minHeight: 44) }
             }
+            Button { app.sheet = .report(ref: ref, error: nil, page: "\(ref.kind.label) detail") } label: {
+                Label("Report an issue", systemImage: "exclamationmark.bubble").frame(minHeight: 44)
+            }
             if !isVoid {
                 Button(role: .destructive) { voiding = true } label: { Label("Void…", systemImage: "xmark.circle").frame(minHeight: 44) }
             }

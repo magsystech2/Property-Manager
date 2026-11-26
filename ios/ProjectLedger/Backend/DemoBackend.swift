@@ -298,6 +298,19 @@ final class DemoBackend: LedgerBackend {
             }
         case .deleteTemplate(let id):
             snapshot.entryTemplates.removeAll { $0.id == id }; audit("entry_templates", id, "delete")
+        case .addIssue(var r):
+            guard !r.note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw LedgerError("Say what's wrong.") }
+            guard !snapshot.issueReports.contains(where: { $0.id == r.id || (r.clientId != nil && $0.clientId == r.clientId) }) else { break }
+            r.status = "open"; r.resolution = nil; r.resolvedBy = nil; r.resolvedAt = nil; r.createdBy = actingAs; r.createdAt = now()
+            snapshot.issueReports.append(r); audit("issue_reports", r.id, "insert")
+        case .setIssueStatus(let id, let resolved, let resolution):
+            guard let i = snapshot.issueReports.firstIndex(where: { $0.id == id }) else { throw LedgerError("Report not found.") }
+            let note = resolution?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            snapshot.issueReports[i].status = resolved ? "resolved" : "open"
+            snapshot.issueReports[i].resolution = resolved && !note.isEmpty ? note : nil
+            snapshot.issueReports[i].resolvedBy = resolved ? actingAs : nil
+            snapshot.issueReports[i].resolvedAt = resolved ? now() : nil
+            audit("issue_reports", id, "update")
         }
         changed()
         return result

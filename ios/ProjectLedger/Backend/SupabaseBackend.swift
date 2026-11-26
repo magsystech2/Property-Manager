@@ -113,11 +113,13 @@ final class SupabaseBackend: LedgerBackend {
             async let distributions = rows("distributions", Distribution.self)
             async let materials = rows("materials", Material.self)
             async let templates = rows("entry_templates", EntryTemplate.self)
+            async let issues = rows("issue_reports", IssueReport.self)   // migration 08
             s.inboxItems = (try? await inbox) ?? []; s.statementLines = (try? await lines) ?? []
             s.statementMatches = (try? await matches) ?? []; s.claims = (try? await claims) ?? []
             s.scheduledDraws = (try? await draws) ?? []; s.cashBalances = (try? await cash) ?? []
             s.profitShares = (try? await shares) ?? []; s.distributions = (try? await distributions) ?? []
             s.materials = (try? await materials) ?? []; s.entryTemplates = (try? await templates) ?? []
+            s.issueReports = (try? await issues) ?? []
             return s
         }
     }
@@ -171,6 +173,17 @@ final class SupabaseBackend: LedgerBackend {
     private struct StatusUpdate: Encodable { let status: String }
     private struct PaidUpdate: Encodable { let status = "paid"; let paidDate: String; let paymentMethod: String; let reference: String }
     private struct IdRow: Decodable { let id: UUID }
+    /// The columns a partner sends; status, resolution and who/when are set by the database.
+    private struct IssueInsert: Encodable, Sendable {
+        let id: UUID; let workspaceId: UUID; let category: String; let note: String
+        let recordKind: String?; let recordId: UUID?; let page: String; let errorText: String; let userAgent: String
+        let screenshotPath: String?; let screenshotName: String?; let clientId: UUID?
+        init(_ r: IssueReport) {
+            id = r.id; workspaceId = r.workspaceId; category = r.category; note = r.note
+            recordKind = r.recordKind?.rawValue; recordId = r.recordId; page = r.page; errorText = r.errorText; userAgent = r.userAgent
+            screenshotPath = r.screenshotPath; screenshotName = r.screenshotName; clientId = r.clientId
+        }
+    }
     private struct NotesUpdate: Encodable { let notes: String }
 
     func change(_ ref: EntryRef, _ change: StatusChange) async throws {
@@ -288,6 +301,12 @@ final class SupabaseBackend: LedgerBackend {
                 try await c.from("entry_templates").upsert(t, onConflict: "id").execute()
             case .deleteTemplate(let id):
                 try await c.from("entry_templates").delete().eq("id", value: id.uuidString).execute()
+            case .addIssue(let r):
+                try await self.insertOnce("issue_reports", IssueInsert(r))
+            case .setIssueStatus(let id, let resolved, let resolution):
+                let note = resolution?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                try await self.update("issue_reports", id, ["status": resolved ? "resolved" : "open", "resolution": resolved && !note.isEmpty ? note : nil],
+                                      denied: "You don't have permission to change this report.")
             }
             return 0
         }
@@ -427,6 +446,9 @@ final class SupabaseBackend: LedgerBackend {
         if message.contains("vendors_name_uq") { return "A vendor with that name already exists." }
         if message.contains("claims_workspace_id_item_kind_item_id_key") { return "Someone already claimed this. Refresh to see who." }
         if message.contains("statement_matches_expense_uq") || message.contains("statement_matches_payment_uq") { return "That record is already matched to a statement line." }
+        if message.contains("issue_reports") && (message.contains("does not exist") || message.contains("schema cache")) {
+            return "Issue reports need the latest database update (migration 20261126000008). Ask the owner to run it."
+        }
         if message.contains("row-level security") { return "You don't have access to do that in this workspace." }
         return message
     }

@@ -251,3 +251,63 @@ public struct EntryTemplate: Codable, Hashable, Identifiable, Sendable {
     public static let repeats = [("none", "Doesn't repeat"), ("monthly", "Monthly"), ("quarterly", "Quarterly"), ("yearly", "Yearly")]
     public var repeatLabel: String { Self.repeats.first { $0.0 == self.repeat }?.1 ?? self.repeat }
 }
+
+// MARK: - Issue reports (migration 08)
+
+/// What kind of problem a partner is flagging. Same values as the web app and the database check.
+public enum IssueCategory: String, CaseIterable, Codable, Sendable {
+    case wrongAmount = "wrong_amount", duplicate, wrongDetails = "wrong_details", missing, appError = "app_error", idea, other
+    public var label: String {
+        switch self {
+        case .wrongAmount: "Wrong amount"
+        case .duplicate: "Duplicate"
+        case .wrongDetails: "Wrong property, vendor or category"
+        case .missing: "Something missing"
+        case .appError: "Error or something didn't work"
+        case .idea: "Idea or request"
+        case .other: "Other"
+        }
+    }
+    public static func label(_ raw: String) -> String { IssueCategory(rawValue: raw)?.label ?? raw }
+}
+
+/// A problem a partner flagged with a record or the app, collected in one list until someone resolves it.
+/// Reports never change money. Only status and resolution change after sending; the server sets who resolved it and when.
+public struct IssueReport: Codable, Hashable, Identifiable, Sendable {
+    public var id: UUID
+    public var workspaceId: UUID
+    public var category: String
+    public var note: String
+    public var recordKind: EntryKind?
+    public var recordId: UUID?
+    /// Where the partner was in the app, the last error shown, and the device, to help whoever fixes it.
+    public var page: String
+    public var errorText: String
+    public var userAgent: String
+    public var screenshotPath: String?
+    public var screenshotName: String?
+    /// open, resolved
+    public var status: String
+    public var resolution: String?
+    public var resolvedBy: UUID?
+    public var resolvedAt: String?
+    public var clientId: UUID?
+    public var createdBy: UUID?
+    public var createdAt: String?
+
+    public init(id: UUID = UUID(), workspaceId: UUID, category: String = IssueCategory.other.rawValue, note: String,
+                recordKind: EntryKind? = nil, recordId: UUID? = nil, page: String = "", errorText: String = "", userAgent: String = "",
+                screenshotPath: String? = nil, screenshotName: String? = nil, status: String = "open", resolution: String? = nil,
+                resolvedBy: UUID? = nil, resolvedAt: String? = nil, clientId: UUID? = nil, createdBy: UUID? = nil, createdAt: String? = nil) {
+        self.id = id; self.workspaceId = workspaceId; self.category = category; self.note = note
+        self.recordKind = recordKind; self.recordId = recordId; self.page = page; self.errorText = errorText; self.userAgent = userAgent
+        self.screenshotPath = screenshotPath; self.screenshotName = screenshotName; self.status = status; self.resolution = resolution
+        self.resolvedBy = resolvedBy; self.resolvedAt = resolvedAt; self.clientId = clientId; self.createdBy = createdBy; self.createdAt = createdAt
+    }
+
+    public var isOpen: Bool { status == "open" }
+    public var ref: EntryRef? {
+        guard let k = recordKind, let id = recordId else { return nil }
+        return EntryRef(k, id)
+    }
+}

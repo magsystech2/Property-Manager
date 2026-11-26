@@ -8,8 +8,19 @@ struct ActivityView: View {
     @State private var attachTo: EntryRef?
 
     var body: some View {
-        let results = app.ledger.search(filter)
+        let l = app.ledger
+        let results = l.search(filter)
+        let words = filter.text.trimmingCharacters(in: .whitespaces).lowercased()
+        let projectHits = words.isEmpty ? [] : Array(l.s.projects.filter { "\($0.nickname) \($0.address)".lowercased().contains(words) }.prefix(6))
+        let vendorHits = words.isEmpty ? [] : Array(l.s.vendors.filter { $0.name.lowercased().contains(words) }.prefix(6))
+        let total = results.filter { $0.status.text != "Void" }.reduce(0) { $0 + $1.amountCents }
         List {
+            if !projectHits.isEmpty || !vendorHits.isEmpty {
+                Section("Properties and vendors") {
+                    ForEach(projectHits) { p in NavigationLink(value: Route.project(p.id)) { Label(p.nickname, systemImage: "building.2") } }
+                    ForEach(vendorHits) { v in NavigationLink(value: Route.vendor(v.id)) { Label(v.name, systemImage: "storefront") } }
+                }
+            }
             if activeFilterCount > 0 {
                 Section {
                     HStack {
@@ -37,11 +48,15 @@ struct ActivityView: View {
             } header: {
                 Text("\(results.count) records")
             } footer: {
-                Text("Swipe left on a record, or touch and hold, to attach a receipt or payment confirmation.")
+                if !words.isEmpty && !results.isEmpty {
+                    Text("Matching records add up to \(Money.format(total)) (void ones left out). Several words find records that have all of them; “412” finds $412.00 to $412.99.")
+                } else {
+                    Text("Swipe left on a record, or touch and hold, to attach a receipt or payment confirmation.")
+                }
             }
         }
         .navigationTitle("Activity")
-        .searchable(text: $filter.text, prompt: "Vendor, invoice #, amount, project…")
+        .searchable(text: $filter.text, prompt: "Description, vendor, amount, invoice #, notes…")
         .refreshable { await app.reload() }
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {

@@ -42,6 +42,13 @@ struct RootView: View {
         .overlay(alignment: .top) { ToastView() }
         .alert("Couldn't do that", isPresented: Binding(get: { app.errorMessage != nil }, set: { if !$0 { app.errorMessage = nil } })) {
             Button("OK", role: .cancel) { app.errorMessage = nil }
+            if app.phase == .ready && app.sheet == nil {
+                Button("Report this") {
+                    let err = app.errorMessage
+                    app.errorMessage = nil
+                    app.sheet = .report(ref: nil, error: err, page: "Error message")
+                }
+            }
         } message: {
             Text(app.errorMessage ?? "")
         }
@@ -139,6 +146,7 @@ enum Route: Hashable {
     case cashPlan
     case templates
     case reports
+    case issues
 }
 
 extension View {
@@ -164,6 +172,7 @@ extension View {
                 case .cashPlan: CashPlanView()
                 case .templates: TemplatesView()
                 case .reports: ReportsView()
+                case .issues: IssuesView()
                 }
             }
             .navigationDestination(for: AnyRoute.self) { r in
