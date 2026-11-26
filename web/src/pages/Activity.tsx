@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useEffect, useMemo, useState } from 'react'
+import { Link, useSearchParams } from 'react-router-dom'
 import { useStore } from '../store'
 import { emptyFilter, type ActivityFilter } from '../core/ledger'
 import { allKinds, kindLabel, refKey, type EntryKind, type EntryRef } from '../core/models'
@@ -38,10 +38,21 @@ const statusOptions = ['Paid', 'Unpaid', 'Partly paid', 'Overdue', 'Needs approv
 export function ActivityPage() {
   const app = useStore()
   const l = app.ledger
-  const [f, setF] = useState<ActivityFilter>(emptyFilter())
+  const [params, setParams] = useSearchParams()
+  const [f, setF] = useState<ActivityFilter>(() => ({ ...emptyFilter(), text: params.get('q') ?? '' }))
   const [showFilters, setShowFilters] = useState(false)
+  // The sidebar search box opens this page with ?q=…; a new search there replaces the text here.
+  const q = params.get('q') ?? ''
+  useEffect(() => { setF((cur) => (cur.text === q ? cur : { ...cur, text: q })) }, [q])
   const results = useMemo(() => l.search(f), [l, f])
-  const set = (patch: Partial<ActivityFilter>) => setF({ ...f, ...patch })
+  const set = (patch: Partial<ActivityFilter>) => {
+    setF({ ...f, ...patch })
+    if (patch.text !== undefined) setParams(patch.text ? { q: patch.text } : {}, { replace: true })
+  }
+  const words = f.text.trim().toLowerCase()
+  const vendorHits = words ? l.s.vendors.filter((v) => v.name.toLowerCase().includes(words)).slice(0, 6) : []
+  const projectHits = words ? l.s.projects.filter((p) => `${p.nickname} ${p.address}`.toLowerCase().includes(words)).slice(0, 6) : []
+  const total = results.filter((e) => e.status.text !== 'Void').reduce((a, e) => a + e.amount_cents, 0)
   const active = f.kinds.length + [f.project_id, f.vendor_id, f.partner_id, f.category_id, f.status_text, f.from, f.to].filter(Boolean).length
   const toggleKind = (k: EntryKind) => set({ kinds: f.kinds.includes(k) ? f.kinds.filter((x) => x !== k) : [...f.kinds, k] })
   return (
@@ -50,8 +61,8 @@ export function ActivityPage() {
       <div className="row wrap">
         <div style={{ flex: 1, minWidth: 220, position: 'relative' }}>
           <span style={{ position: 'absolute', left: 11, top: 11, color: 'var(--muted)' }}><Icon name="search" /></span>
-          <input type="search" placeholder="Search vendor, invoice #, amount, project, partner…" value={f.text} style={{ paddingLeft: 36 }}
-            onChange={(e) => set({ text: e.target.value })} aria-label="Search" />
+          <input type="search" placeholder="Search description, vendor, amount, invoice or reference #, notes…" value={f.text} style={{ paddingLeft: 36 }}
+            onChange={(e) => set({ text: e.target.value })} aria-label="Search" autoFocus={!!q} />
         </div>
         <button className="btn" onClick={() => setShowFilters(!showFilters)}>Filters{active ? ` (${active})` : ''}</button>
         {active > 0 && <button className="btn link" onClick={() => setF({ ...emptyFilter(), text: f.text })}>Clear</button>}
@@ -86,7 +97,14 @@ export function ActivityPage() {
           </div>
         </div>
       )}
-      <Section title={`${results.length} result${results.length === 1 ? '' : 's'}`}>
+      {(vendorHits.length > 0 || projectHits.length > 0) && (
+        <div className="row wrap" style={{ gap: 6 }}>
+          {projectHits.map((p) => <Link key={p.id} className="badge neutral" to={`/projects/${p.id}`}><Icon name="folder" size={12} />{p.nickname}</Link>)}
+          {vendorHits.map((v) => <Link key={v.id} className="badge neutral" to={`/vendors/${v.id}`}><Icon name="store" size={12} />{v.name}</Link>)}
+        </div>
+      )}
+      <Section title={`${results.length} result${results.length === 1 ? '' : 's'}`}
+        footer={f.text.trim() && results.length > 0 ? <>Matching records add up to {Money.format(total)} (void ones left out). Several words find records that have all of them; “412” finds $412.00 to $412.99.</> : undefined}>
         <EntryList entries={results} empty="Nothing matches." limit={200} />
       </Section>
     </div>

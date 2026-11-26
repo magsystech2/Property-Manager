@@ -38,10 +38,12 @@ export function HomePage() {
   const h = l.home()
   const open = l.openCommitments().filter(([c]) => { const p = l.project(c.project_id); return p ? isActiveProject(p) : false })
   const unbilled = open.reduce((a, [, st]) => a + st.unbilled_cents, 0)
+  const openIssues = (l.s.issue_reports ?? []).filter((r) => r.status === 'open').length
   const projects = l.s.projects.filter(isActiveProject).sort((a, b) => a.nickname.localeCompare(b.nickname))
   return (
     <div className="stack">
       <PageHead title={app.workspace?.name ?? 'Home'} sub={app.lastSynced ? `Updated ${app.lastSynced.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` : undefined}>
+        <Link className="btn" to="/activity" aria-label="Search records"><Icon name="search" />Search</Link>
         <button className="btn" onClick={() => app.reload()} disabled={app.syncing}><Icon name="refresh" />{app.syncing ? 'Refreshing…' : 'Refresh'}</button>
       </PageHead>
 
@@ -56,6 +58,11 @@ export function HomePage() {
         <Section title="Needs review or payment"
           footer={app.workspace?.require_review ? 'Review is on: another partner must approve bills, change orders and reimbursement requests.' : undefined}>
           <EntryList entries={h.needs_review} />
+        </Section>
+      )}
+      {openIssues > 0 && (
+        <Section title="Reported issues">
+          <Link className="item" to="/issues"><Icon name="alert" /><span className="grow">{openIssues} open issue{openIssues === 1 ? '' : 's'} to look at</span><Icon name="chevron" /></Link>
         </Section>
       )}
       {app.draftList.length > 0 && (

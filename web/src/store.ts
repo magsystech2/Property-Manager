@@ -4,7 +4,7 @@ import { Ledger } from './core/ledger'
 import { Rules, LedgerError } from './core/rules'
 import { uuid, Money } from './core/money'
 import { emptySnapshot, type Snapshot, type Workspace, type EntryRef, type Project, type Vendor, type ProjectBudget,
-  type BudgetCategory, type Member, type Invite, type Expense, type Bill, type Attachment , type InboxItem, type StatementLine, type Claim, type ClaimKind, type ScheduledDraw, type EntryTemplate, type Material } from './core/models'
+  type BudgetCategory, type Member, type Invite, type Expense, type Bill, type Attachment , type InboxItem, type StatementLine, type Claim, type ClaimKind, type ScheduledDraw, type EntryTemplate, type Material, type IssueReport, type IssueCategory } from './core/models'
 import type { Backend, NewRecord, StatusChange } from './backend/types'
 import { BackendError } from './backend/types'
 import { DemoBackend } from './backend/demo'
@@ -45,6 +45,7 @@ export type Modal =
   | { type: 'void'; ref: EntryRef }
   | { type: 'markPaid'; ref: EntryRef }
   | { type: 'attach'; target: AttachTarget }
+  | { type: 'report'; ref?: EntryRef | null; error?: string | null }
 
 function safeName(name: string) {
   return name.replace(/[^A-Za-z0-9.-]/g, '-')
@@ -60,6 +61,8 @@ export class AppStore {
   lastSynced: Date | null = null
   toast: string | null = null
   error: string | null = null
+  /** The last error shown, so a report can include it even after the banner is dismissed. */
+  lastError: { text: string; at: number } | null = null
   modal: Modal | null = null
   drafts: DraftStore | null = null
   draftList: TransactionDraft[] = []
@@ -90,6 +93,7 @@ export class AppStore {
   }
   showError(e: unknown) {
     this.error = e instanceof Error ? e.message : String(e)
+    this.lastError = { text: this.error, at: Date.now() }
     this.emit()
   }
   open(m: Modal | null) { this.modal = m; this.emit() }
@@ -374,6 +378,34 @@ export class AppStore {
     }
     return { saved, failed }
   }
+
+  // --- Issue reports
+  /** Sends a report with an optional screenshot. The page, browser and last error are added for whoever fixes it. */
+  async reportIssue(input: { category: IssueCategory; note: string; ref?: EntryRef | null; error?: string | null; screenshot?: File | null }): Promise<boolean> {
+    const b = this.backend
+    const ws = this.workspace?.id
+    if (!b || !ws) return false
+    const ok = await this.run(async () => {
+      if (!input.note.trim()) throw new LedgerError('Say what’s wrong.')
+      const id = uuid()
+      let screenshot_path: string | null = null
+      if (input.screenshot) {
+        screenshot_path = `${ws}/reports/${id}-${safeName(input.screenshot.name || 'screenshot.png')}`
+        await b.upload(input.screenshot, screenshot_path, input.screenshot.type || 'image/png')
+      }
+      await b.addIssueReport({
+        id, workspace_id: ws, category: input.category, note: input.note.trim(),
+        record_kind: input.ref?.kind ?? null, record_id: input.ref?.id ?? null,
+        page: window.location.pathname, error_text: (input.error ?? '').slice(0, 2000), user_agent: navigator.userAgent.slice(0, 300),
+        screenshot_path, screenshot_name: input.screenshot ? (input.screenshot.name || 'screenshot.png') : null,
+        status: 'open', client_id: id,
+      })
+    })
+    if (ok) { this.showToast('Report sent. It’s in Issues for any partner to pick up.'); await this.reload(true) }
+    return ok
+  }
+  resolveIssue(r: IssueReport, resolution: string) { return this.simple((b) => b.setIssueStatus(r.id, 'resolved', resolution), 'Marked resolved') }
+  reopenIssue(r: IssueReport) { return this.simple((b) => b.setIssueStatus(r.id, 'open'), 'Reopened') }
 
   // --- Receipt inbox
   async addToInbox(files: File[], note: string): Promise<boolean> {

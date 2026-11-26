@@ -364,6 +364,33 @@ export interface ScheduledDraw {
 
 export interface CashBalance { id: string; workspace_id: string; as_of: Day; amount_cents: Cents; note: string; created_by?: string | null; created_at?: string | null }
 
+/** A problem a partner flagged with a record or the app, collected in one list until someone resolves it. */
+export type IssueCategory = 'wrong_amount' | 'duplicate' | 'wrong_details' | 'missing' | 'app_error' | 'idea' | 'other'
+export const issueCategoryLabel: Record<IssueCategory, string> = {
+  wrong_amount: 'Wrong amount', duplicate: 'Duplicate', wrong_details: 'Wrong property, vendor or category', missing: 'Something missing',
+  app_error: 'Error or something didn’t work', idea: 'Idea or request', other: 'Other',
+}
+export interface IssueReport {
+  id: string
+  workspace_id: string
+  category: IssueCategory | string
+  note: string
+  record_kind?: EntryKind | null
+  record_id?: string | null
+  page: string
+  error_text: string
+  user_agent: string
+  screenshot_path?: string | null
+  screenshot_name?: string | null
+  status: 'open' | 'resolved' | string
+  resolution?: string | null
+  resolved_by?: string | null
+  resolved_at?: string | null
+  client_id?: string | null
+  created_by?: string | null
+  created_at?: string | null
+}
+
 export interface Snapshot {
   workspace: Workspace
   members: Member[]
@@ -394,6 +421,7 @@ export interface Snapshot {
   distributions: Distribution[]
   materials: Material[]
   entry_templates: EntryTemplate[]
+  issue_reports: IssueReport[]
 }
 
 export function emptySnapshot(workspace: Workspace): Snapshot {
@@ -402,7 +430,7 @@ export function emptySnapshot(workspace: Workspace): Snapshot {
     change_orders: [], bills: [], expenses: [], allocations: [], payments: [], reimbursements: [],
     reimbursement_items: [], contributions: [], proceeds: [], attachments: [], audit: [],
     inbox_items: [], statement_lines: [], statement_matches: [], claims: [], scheduled_draws: [], cash_balances: [],
-    profit_shares: [], distributions: [], materials: [], entry_templates: [],
+    profit_shares: [], distributions: [], materials: [], entry_templates: [], issue_reports: [],
   }
 }
 

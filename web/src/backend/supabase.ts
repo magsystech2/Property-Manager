@@ -2,7 +2,7 @@
 // Access is enforced by the database (row-level security + triggers), so the app can't bypass it.
 import { createClient, type SupabaseClient, type RealtimeChannel } from '@supabase/supabase-js'
 import { Rules } from '../core/rules'
-import { emptySnapshot, kindTable, type Snapshot, type Workspace, type EntryRef, type Attachment, type Expense, type Bill, type InboxItem, type StatementLine, type StatementMatch, type Claim, type ScheduledDraw, type CashBalance, type Material, type EntryTemplate } from '../core/models'
+import { emptySnapshot, kindTable, type Snapshot, type Workspace, type EntryRef, type Attachment, type Expense, type Bill, type InboxItem, type StatementLine, type StatementMatch, type Claim, type ScheduledDraw, type CashBalance, type Material, type EntryTemplate, type IssueReport } from '../core/models'
 import type { Backend, NewRecord, StatusChange, AllocationInput } from './types'
 import { BackendError } from './types'
 
@@ -92,9 +92,9 @@ export class SupabaseBackend implements Backend {
     const invites = await rows('invites').catch(() => [])
     // Tables from the 2026-11-24 migration; an older database without them still loads.
     const optional = (t: string) => rows(t).catch(() => [])
-    const [inbox, lines, matches, claims, draws, cash, shares, distributions, materials, templates] = await Promise.all([optional('inbox_items'), optional('statement_lines'),
+    const [inbox, lines, matches, claims, draws, cash, shares, distributions, materials, templates, issues] = await Promise.all([optional('inbox_items'), optional('statement_lines'),
       optional('statement_matches'), optional('claims'), optional('scheduled_draws'), optional('cash_balances'),
-      optional('profit_shares'), optional('distributions'), optional('materials'), optional('entry_templates')])
+      optional('profit_shares'), optional('distributions'), optional('materials'), optional('entry_templates'), optional('issue_reports')])
     const audit = await this.wrap(() => this.client.from('audit_log').select('id,workspace_id,table_name,record_id,action,actor,at,reason')
       .eq('workspace_id', ws).order('id', { ascending: false }).limit(1000))
     Object.assign(s, {
@@ -102,7 +102,7 @@ export class SupabaseBackend implements Backend {
       payments, reimbursements, reimbursement_items: items, contributions, proceeds, attachments, invites, audit,
       inbox_items: inbox, statement_lines: lines, statement_matches: matches, claims, scheduled_draws: draws, cash_balances: cash,
       profit_shares: shares, distributions, materials: materials.map((m: any) => ({ ...m, qty_bought: Number(m.qty_bought), qty_used: Number(m.qty_used), qty_returned: Number(m.qty_returned) })),
-      entry_templates: templates,
+      entry_templates: templates, issue_reports: issues,
     })
     return s
   }
@@ -264,6 +264,15 @@ export class SupabaseBackend implements Backend {
   }
   async deleteTemplate(id: string) { await this.wrap(() => this.client.from('entry_templates').delete().eq('id', id)) }
 
+  async addIssueReport(r: IssueReport) {
+    const { status: _s, resolution: _r, resolved_by: _b, resolved_at: _t, created_by: _c, created_at: _a, ...row } = r
+    await this.wrap(() => this.client.from('issue_reports').upsert(row, { onConflict: 'client_id', ignoreDuplicates: true }))
+  }
+  async setIssueStatus(id: string, status: 'open' | 'resolved', resolution?: string | null) {
+    const rows = await this.wrap(() => this.client.from('issue_reports').update({ status, resolution: status === 'resolved' ? (resolution?.trim() || null) : null }).eq('id', id).select('id'))
+    if (!rows || (rows as unknown[]).length === 0) throw new BackendError("You don't have permission to change this report.")
+  }
+
   async fileURL(path: string) {
     const data = await this.wrap(() => this.client.storage.from('attachments').createSignedUrl(path, 3600))
     return data!.signedUrl
@@ -293,6 +302,7 @@ function mapError(e: unknown): Error {
   if (msg.includes('claims_workspace_id_item_kind_item_id_key')) return new BackendError('Someone already claimed this. Refresh to see who.')
   if (msg.includes('statement_matches_expense_uq') || msg.includes('statement_matches_payment_uq')) return new BackendError('That record is already matched to a statement line.')
   if (/already filed|add up to more than the statement line|Only posted records can be matched|can only claim items for yourself/.test(msg)) return new BackendError(msg.replace(/^.*?ERROR:\s*/, ''))
+  if (msg.includes('issue_reports') && /does not exist|schema cache/i.test(msg)) return new BackendError('Issue reports need the latest database update (migration 20261126000008). Ask the owner to run it.')
   if (msg.includes('row-level security')) return new BackendError("You don't have access to do that in this workspace.")
   return new BackendError(msg)
 }

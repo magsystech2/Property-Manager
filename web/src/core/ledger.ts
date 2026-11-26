@@ -67,6 +67,27 @@ export interface ActivityFilter {
 }
 export const emptyFilter = (): ActivityFilter => ({ text: '', kinds: [] })
 
+/** A search word, and the amount it names if it looks like one ("412.50", "$1,250", "412"). */
+export interface SearchTerm { text: string; cents: number | null; wholeDollars: boolean }
+export function searchTerms(q: string): SearchTerm[] {
+  return q.toLowerCase().split(/\s+/).filter(Boolean).map((text) => {
+    const m = /^-?\$?((?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d{1,2})?|\.\d{1,2})$/.exec(text)
+    if (!m) return { text, cents: null, wholeDollars: false }
+    const n = Number(m[1].replace(/,/g, ''))
+    return { text: text.replace(/^\$/, ''), cents: Math.round(n * 100), wholeDollars: !m[1].includes('.') }
+  })
+}
+/** "412.5" finds $412.50 exactly; "412" finds $412.00 to $412.99; refunds and credits match by size. */
+export function amountMatches(amount: number, t: SearchTerm): boolean {
+  if (t.cents == null) return false
+  const a = Math.abs(amount)
+  return t.wholeDollars ? Math.floor(a / 100) * 100 === t.cents : a === t.cents
+}
+function attachmentRefKey(a: { expense_id?: string | null; bill_id?: string | null; bill_payment_id?: string | null; reimbursement_id?: string | null; contribution_id?: string | null; commitment_id?: string | null }): string {
+  return a.expense_id ? `expense:${a.expense_id}` : a.bill_id ? `bill:${a.bill_id}` : a.bill_payment_id ? `payment:${a.bill_payment_id}`
+    : a.reimbursement_id ? `reimbursement:${a.reimbursement_id}` : a.contribution_id ? `contribution:${a.contribution_id}` : a.commitment_id ? `commitment:${a.commitment_id}` : ''
+}
+
 const UNCATEGORIZED = '00000000-0000-0000-0000-000000000000'
 const VOID: StatusLabel = { text: 'Void', tone: 'neutral' }
 
@@ -417,7 +438,7 @@ export class Ledger {
   }
 
   search(f: ActivityFilter): Entry[] {
-    const q = f.text.trim().toLowerCase()
+    const terms = searchTerms(f.text)
     return this.entries().filter((e) => {
       if (f.kinds.length && !f.kinds.includes(e.ref.kind)) return false
       if (f.project_id && e.project_id !== f.project_id) return false
@@ -427,12 +448,28 @@ export class Ledger {
       if (f.status_text && e.status.text !== f.status_text) return false
       if (f.from && e.date < f.from) return false
       if (f.to && e.date > f.to) return false
-      if (!q) return true
-      const hay = [e.title, e.subtitle, e.invoice_number, Money.plain(e.amount_cents), Money.format(e.amount_cents),
-        this.project(e.project_id)?.nickname ?? '', this.vendor(e.vendor_id)?.name ?? '', this.payerName(e.partner_id),
-        e.status.text, e.date, e.notes ?? '', ...e.category_ids.map((c) => this.category(c)?.name ?? '')]
-      return hay.join(' ').toLowerCase().includes(q)
+      if (!terms.length) return true
+      const hay = this.searchText(e)
+      return terms.every((t) => hay.includes(t.text) || (t.cents != null && amountMatches(e.amount_cents, t)))
     })
+  }
+
+  private _searchText = new Map<string, string>()
+  /** Everything a record can be found by: names, amounts, dates, references, descriptions, notes and attached file names. */
+  searchText(e: Entry): string {
+    const key = refKey(e.ref)
+    const hit = this._searchText.get(key)
+    if (hit != null) return hit
+    const rec = (this.record(e.ref) ?? {}) as Record<string, unknown>
+    const fields = ['description', 'notes', 'reference', 'invoice_number', 'void_reason', 'payment_method', 'scope', 'title']
+      .map((k) => (typeof rec[k] === 'string' ? (rec[k] as string) : ''))
+    const files = this.s.attachments.filter((a) => attachmentRefKey(a) === key).map((a) => a.filename)
+    const text = [e.title, e.subtitle, e.invoice_number, Money.plain(e.amount_cents), Money.format(e.amount_cents),
+      this.project(e.project_id)?.nickname ?? '', this.project(e.project_id)?.address ?? '', this.vendor(e.vendor_id)?.name ?? '',
+      this.payerName(e.partner_id), e.status.text, e.date, Days.display(e.date), e.notes ?? '', ...fields, ...files,
+      ...e.category_ids.map((c) => this.category(c)?.name ?? '')].join(' \u0001 ').toLowerCase()
+    this._searchText.set(key, text)
+    return text
   }
 
   entry(ref: EntryRef) { return this.entries().find((e) => e.ref.kind === ref.kind && e.ref.id === ref.id) }
