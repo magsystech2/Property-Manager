@@ -1,6 +1,6 @@
 // Bulk upload: many receipts and bills at once from a CSV file (from Excel, Numbers or Google Sheets).
 // Each row becomes the same draft the Add form makes, so it goes through the same checks and posting.
-import { Money, Days, type Day } from './money'
+import { Money, Days, uuid, type Day } from './money'
 import { PaymentMethods, isActiveProject } from './models'
 import type { Ledger } from './ledger'
 import { newDraft, type TransactionDraft } from '../drafts'
@@ -12,15 +12,15 @@ export const importColumns = [
 
 /** What each column means. Shown on the page and in the template's notes file. */
 export const columnHelp: [string, string][] = [
-  ['type', 'receipt (already paid) or bill (still owed). Blank means receipt.'],
+  ['type', 'receipt (already paid), bill (still owed), or contribution (a partner putting money into the LLC account). Blank means receipt.'],
   ['date', 'Date on the receipt or bill: 2026-11-20 or 11/20/2026.'],
-  ['project', 'Project nickname or address, exactly as in the app.'],
-  ['vendor', 'Vendor name. A new name creates the vendor.'],
+  ['project', 'Project nickname or address, exactly as in the app. Contributions can leave it blank for LLC-wide money.'],
+  ['vendor', 'Vendor name. A new name creates the vendor. Leave blank for contributions.'],
   ['category', 'Budget category name, e.g. Materials. Blank leaves it uncategorized.'],
   ['amount', 'Total including tax, e.g. 1250.50. Negative for a refund receipt.'],
   ['tax', 'Optional. Tax included in the amount.'],
   ['description', 'Optional. What it was for.'],
-  ['paid_by', 'Receipts: partner name or email if they paid personally, or LLC. Blank means you.'],
+  ['paid_by', 'Receipts: partner name or email if they paid personally, or LLC. Blank means you. Contributions: the partner who put the money in.'],
   ['payment_method', `Receipts: ${PaymentMethods.map(([k]) => k).join(', ')}. Blank means card.`],
   ['reference', 'Optional. Check #, confirmation #, last 4 of card.'],
   ['invoice_number', 'Bills: the vendor’s invoice number.'],
@@ -89,7 +89,23 @@ export interface ImportRow {
   warnings: string[]
   /** True when a matching receipt or bill is already in the books, or earlier in this file. Unchecked by default. */
   duplicate: boolean
+  /** Set instead of draft for a contribution row. */
+  contribution?: ImportContribution | null
 }
+
+/** A partner putting money into the LLC account. */
+export interface ImportContribution {
+  id: string
+  partner_user_id: string
+  project_id: string | null
+  amount_cents: number
+  contribution_date: Day
+  payment_method: string
+  reference: string
+  notes: string
+}
+
+const contributionTypes = ['contribution', 'capital', 'capital contribution', 'deposit', 'money in']
 
 const norm = (s: string) => s.trim().toLowerCase().replace(/\s+/g, ' ')
 const headerKey = (h: string) => norm(h).replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '')
@@ -103,7 +119,7 @@ const aliases: Record<string, string> = {
 export function readImport(table: string[][], l: Ledger, me: string | null): { rows: ImportRow[]; missingColumns: string[] } {
   if (table.length === 0) return { rows: [], missingColumns: ['type', 'date', 'project', 'vendor', 'amount'] }
   const keys = table[0].map((h) => { const k = headerKey(h); return aliases[k] ?? k })
-  const missingColumns = ['date', 'project', 'vendor', 'amount'].filter((k) => !keys.includes(k))
+  const missingColumns = ['date', 'amount'].filter((k) => !keys.includes(k))
   if (missingColumns.length) return { rows: [], missingColumns }
   const seen = new Map<string, number>()
   const rows = table.slice(1).map((cells, i): ImportRow => {
@@ -112,8 +128,9 @@ export function readImport(table: string[][], l: Ledger, me: string | null): { r
     const errors: string[] = []
     const warnings: string[] = []
     const type = norm(v.type ?? '')
+    if (contributionTypes.includes(type)) return readContribution(v, i, l, me, seen)
     const kind: 'receipt' | 'bill' | null = !type || ['receipt', 'expense', 'paid'].includes(type) ? 'receipt' : ['bill', 'invoice', 'owed'].includes(type) ? 'bill' : null
-    if (!kind) errors.push(`Type “${v.type}” should be receipt or bill.`)
+    if (!kind) errors.push(`Type “${v.type}” should be receipt, bill or contribution.`)
     const d = newDraft(kind ?? 'receipt')
 
     const date = parseDay(v.date ?? '')
@@ -188,7 +205,8 @@ export function readImport(table: string[][], l: Ledger, me: string | null): { r
     if (!errors.length && amount != null) {
       const inBooks = d.vendor_id ? l.possibleDuplicates(d.vendor_id, d.date, Math.abs(amount), d.invoice_number) : []
       if (inBooks.length) { duplicate = true; warnings.push(`Looks like ${inBooks[0].title} on ${Days.display(inBooks[0].date)}, already entered.`) }
-      const key = [kind, norm(vname), d.date, amount, norm(d.invoice_number)].join('|')
+      // A different reference (check #, confirmation #) means a different payment, even for the same vendor, day and amount.
+      const key = [kind, norm(vname), d.date, amount, norm(d.invoice_number), norm(d.reference)].join('|')
       const earlier = seen.get(key)
       if (earlier) { duplicate = true; warnings.push(`Same as row ${earlier} in this file.`) } else seen.set(key, i + 2)
     }
@@ -197,3 +215,49 @@ export function readImport(table: string[][], l: Ledger, me: string | null): { r
   return { rows, missingColumns }
 }
 
+
+function readContribution(v: Record<string, string>, i: number, l: Ledger, me: string | null, seen: Map<string, number>): ImportRow {
+  const errors: string[] = []
+  const warnings: string[] = []
+  const date = parseDay(v.date ?? '')
+  if (!date) errors.push(v.date ? `Date “${v.date}” isn’t a date like 2026-11-20 or 11/20/2026.` : 'Date is missing.')
+  let project_id: string | null = null
+  const pname = norm(v.project ?? '')
+  if (pname) {
+    const project = l.s.projects.find((p) => norm(p.nickname) === pname) ?? l.s.projects.find((p) => norm(p.address) === pname)
+    if (!project) errors.push(`No project named “${v.project}”.`)
+    else project_id = project.id
+  }
+  const who = norm(v.paid_by ?? '')
+  let partner: string | null = null
+  if (!who || who === 'me') { partner = me; if (!me) errors.push('Paid by is missing: name the partner who put the money in.') }
+  else {
+    const m = l.s.members.find((x) => norm(x.display_name) === who || norm(x.email ?? '') === who)
+    if (!m) errors.push(`No partner named “${v.paid_by}”. A contribution needs a partner’s name or email.`)
+    else { partner = m.user_id; if (m.access_revoked_at) warnings.push(`${m.display_name}’s access was removed.`) }
+  }
+  const amount = Money.parse(v.amount)
+  if (amount == null) errors.push(v.amount ? `Amount “${v.amount}” isn’t a number.` : 'Amount is missing.')
+  else if (amount <= 0) errors.push('A contribution must be more than zero.')
+  let payment_method = 'ach'
+  const method = norm(v.payment_method ?? '')
+  if (method) {
+    const pm = PaymentMethods.find(([k, label]) => k === method || norm(label) === method)
+    if (!pm) errors.push(`Payment method “${v.payment_method}” should be one of ${PaymentMethods.map(([k]) => k).join(', ')}.`)
+    else payment_method = pm[0]
+  }
+  if (v.vendor) warnings.push('Vendor is ignored for contributions.')
+  let duplicate = false
+  if (!errors.length && partner && date && amount != null) {
+    const inBooks = l.s.contributions.find((c) => c.status !== 'void' && c.partner_user_id === partner && c.amount_cents === amount && c.contribution_date === date)
+    if (inBooks) { duplicate = true; warnings.push('Looks like a contribution already entered.') }
+    const key = ['contribution', partner, date, amount, project_id ?? ''].join('|')
+    const earlier = seen.get(key)
+    if (earlier) { duplicate = true; warnings.push(`Same as row ${earlier} in this file.`) } else seen.set(key, i + 2)
+  }
+  const contribution: ImportContribution | null = errors.length ? null : {
+    id: uuid(), partner_user_id: partner!, project_id, amount_cents: amount!, contribution_date: date!,
+    payment_method, reference: v.reference ?? '', notes: v.description ?? '',
+  }
+  return { line: i + 2, values: v, draft: null, errors, warnings, duplicate, contribution }
+}

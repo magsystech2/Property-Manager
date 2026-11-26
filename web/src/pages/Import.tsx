@@ -15,6 +15,8 @@ function saveFile(text: string, name: string) {
 }
 
 type RowState = { saved?: boolean; error?: string }
+const rowId = (r: ImportRow) => r.draft?.id ?? r.contribution?.id ?? ''
+const rowAmount = (r: ImportRow) => r.contribution ? r.contribution.amount_cents : r.draft ? (Money.parse(r.draft.total_text) ?? 0) * (r.draft.is_refund ? -1 : 1) : 0
 
 export function ImportPage() {
   const app = useStore()
@@ -31,10 +33,10 @@ export function ImportPage() {
   // Checked once when the file is read, so rows saved during this import aren't re-flagged as duplicates of themselves.
   const result = useMemo(() => (table ? readImport(table, l, app.me) : null), [table]) // eslint-disable-line react-hooks/exhaustive-deps
   const rows = result?.rows ?? []
-  const ready = rows.filter((r) => r.draft && !state[r.line]?.saved)
+  const ready = rows.filter((r) => (r.draft || r.contribution) && !state[r.line]?.saved)
   const problems = rows.filter((r) => r.errors.length)
   const chosen = ready.filter((r) => picked.has(r.line))
-  const chosenTotal = chosen.reduce((a, r) => a + (Money.parse(r.draft!.total_text) ?? 0) * (r.draft!.is_refund ? -1 : 1), 0)
+  const chosenTotal = chosen.reduce((a, r) => a + rowAmount(r), 0)
   const savedCount = Object.values(state).filter((s) => s.saved).length
 
   const read = async (f: File | undefined) => {
@@ -50,7 +52,7 @@ export function ImportPage() {
     if (t.length > 1001) { setFileError(`That file has ${t.length - 1} rows. Upload up to 1,000 at a time.`); return }
     const r = readImport(t, l, app.me)
     setTable(t)
-    setPicked(new Set(r.rows.filter((x) => x.draft && !x.duplicate).map((x) => x.line)))
+    setPicked(new Set(r.rows.filter((x) => (x.draft || x.contribution) && !x.duplicate).map((x) => x.line)))
   }
 
   const toggle = (line: number) => setPicked((p) => { const n = new Set(p); if (n.has(line)) n.delete(line); else n.add(line); return n })
@@ -58,23 +60,25 @@ export function ImportPage() {
   const importRows = async () => {
     const list = chosen
     setProgress({ done: 0, total: list.length })
-    const { saved, failed } = await app.importMany(list.map((r) => r.draft!), (done) => setProgress({ done, total: list.length }))
+    const { saved, failed } = await app.importMany(list.filter((r) => r.draft).map((r) => r.draft!), (done) => setProgress({ done, total: list.length }),
+      list.filter((r) => r.contribution).map((r) => r.contribution!))
     setProgress(null)
     setState((s) => {
       const n = { ...s }
       for (const r of list) {
-        if (saved.includes(r.draft!.id)) n[r.line] = { saved: true }
-        else if (failed[r.draft!.id]) n[r.line] = { error: failed[r.draft!.id] }
+        const id = rowId(r)
+        if (saved.includes(id)) n[r.line] = { saved: true }
+        else if (failed[id]) n[r.line] = { error: failed[id] }
       }
       return n
     })
-    setPicked((p) => new Set([...p].filter((line) => !list.some((r) => r.line === line && saved.includes(r.draft!.id)))))
+    setPicked((p) => new Set([...p].filter((line) => !list.some((r) => r.line === line && saved.includes(rowId(r))))))
     if (saved.length) app.showToast(`${saved.length} ${saved.length === 1 ? 'entry' : 'entries'} imported`)
   }
 
   return (
     <div className="stack">
-      <PageHead title="Bulk upload" sub="Add many receipts and bills at once from a spreadsheet. Each row is checked the same way as the Add form before anything is saved." />
+      <PageHead title="Bulk upload" sub="Add many receipts, bills and partner contributions at once from a spreadsheet. Each row is checked the same way as the Add form before anything is saved." />
 
       <Section title="1. Get the template" footer="Open it in Excel, Numbers or Google Sheets, replace the two example rows with yours (or keep them to try it), and save as CSV.">
         <div className="item">
@@ -145,16 +149,17 @@ function Row({ r, s, checked, onToggle }: { r: ImportRow; s?: RowState; checked:
   const app = useStore()
   const l = app.ledger
   const d = r.draft
+  const c = r.contribution
   const cat = d?.splits[0]?.category_id ? l.category(d.splits[0].category_id)?.name : r.values.category
-  const amount = d ? Money.parse(d.total_text)! * (d.is_refund ? -1 : 1) : null
+  const amount = d || c ? rowAmount(r) : null
   return (
     <tr className={r.errors.length ? 'row-bad' : s?.saved ? 'row-done' : ''}>
-      <td>{d && !s?.saved && <input type="checkbox" checked={checked} onChange={onToggle} aria-label={`Import row ${r.line}`} />}</td>
+      <td>{(d || c) && !s?.saved && <input type="checkbox" checked={checked} onChange={onToggle} aria-label={`Import row ${r.line}`} />}</td>
       <td className="muted">{r.line}</td>
-      <td>{d ? (d.kind === 'bill' ? 'Bill' : d.is_refund ? 'Refund' : 'Receipt') : r.values.type || 'receipt'}</td>
-      <td style={{ whiteSpace: 'nowrap' }}>{d ? Days.display(d.date) : r.values.date}</td>
-      <td>{d ? l.project(d.project_id)?.nickname : r.values.project}</td>
-      <td>{r.values.vendor}</td>
+      <td>{c ? 'Contribution' : d ? (d.kind === 'bill' ? 'Bill' : d.is_refund ? 'Refund' : 'Receipt') : r.values.type || 'receipt'}</td>
+      <td style={{ whiteSpace: 'nowrap' }}>{c ? Days.display(c.contribution_date) : d ? Days.display(d.date) : r.values.date}</td>
+      <td>{c ? (c.project_id ? l.project(c.project_id)?.nickname : <span className="muted">LLC-wide</span>) : d ? l.project(d.project_id)?.nickname : r.values.project}</td>
+      <td>{c ? l.payerName(c.partner_user_id) : r.values.vendor}</td>
       <td>{cat || <span className="muted">-</span>}</td>
       <td className="num" style={{ whiteSpace: 'nowrap' }}>{amount != null ? Money.format(amount) : r.values.amount}</td>
       <td className="small">

@@ -12,6 +12,7 @@ import { SupabaseBackend } from './backend/supabase'
 import { AppConfig } from './config'
 import { DraftStore, draftAllocations, draftTotal, loadPayerDefault, newDraft, rememberPayer, type TransactionDraft } from './drafts'
 import { advance } from './core/settlement'
+import type { ImportContribution } from './core/bulkImport'
 import { lineMatchedCents, suggestFromText, vendorFromDescription } from './core/planning'
 
 export type Phase = 'launching' | 'welcome' | 'signIn' | 'chooseWorkspace' | 'ready'
@@ -323,9 +324,9 @@ export class AppStore {
 
   /**
    * Bulk upload: posts many receipts and bills, adding new vendors once each. Rows are checked first; a row that
-   * fails doesn't stop the others. Returns the draft ids that were saved and an error per failed one.
+   * fails doesn't stop the others. Contribution rows are saved first. Returns the ids that were saved and an error per failed one.
    */
-  async importMany(drafts: TransactionDraft[], onProgress?: (done: number) => void): Promise<{ saved: string[]; failed: Record<string, string> }> {
+  async importMany(drafts: TransactionDraft[], onProgress?: (done: number) => void, contributions: ImportContribution[] = []): Promise<{ saved: string[]; failed: Record<string, string> }> {
     const b = this.backend
     const ws = this.workspace?.id
     const saved: string[] = []
@@ -333,6 +334,16 @@ export class AppStore {
     if (!b || !ws) return { saved, failed }
     const vendorIds = new Map<string, string>()
     try {
+      for (const [i, c] of contributions.entries()) {
+        try {
+          await b.insert({ type: 'contribution', row: { ...c, workspace_id: ws, status: 'posted', client_id: c.id } })
+          saved.push(c.id)
+        } catch (e) {
+          failed[c.id] = e instanceof Error ? e.message : String(e)
+          if (e instanceof BackendError && e.offline) { for (const r of [...contributions.slice(i + 1), ...drafts]) failed[r.id] = 'Not saved: no connection.'; return { saved, failed } }
+        }
+        onProgress?.(i + 1)
+      }
       for (const [i, d] of drafts.entries()) {
         try {
           let vendorId = d.vendor_id
@@ -355,7 +366,7 @@ export class AppStore {
           failed[d.id] = e instanceof Error ? e.message : String(e)
           if (e instanceof BackendError && e.offline) { for (const r of drafts.slice(i + 1)) failed[r.id] = 'Not saved: no connection.'; break }
         }
-        onProgress?.(i + 1)
+        onProgress?.(contributions.length + i + 1)
       }
     } finally {
 
