@@ -335,3 +335,37 @@ export function ModalShell({ title, children, onClose, onSave, saveTitle = 'Save
     </div>
   )
 }
+
+/** A big money figure with the cents set smaller, as in the hero cards. */
+export function BigMoney({ cents }: { cents: Cents }) {
+  const s = Money.format(cents)
+  const i = s.lastIndexOf('.')
+  return <span className="big-money num">{i > 0 ? <>{s.slice(0, i)}<span className="cents">{s.slice(i)}</span></> : s}</span>
+}
+
+/** Dark green headline card with an optional tan side card for the one thing that needs attention. */
+export function Hero({ label, cents, children, side }: { label: ReactNode; cents: Cents; children?: ReactNode; side?: ReactNode }) {
+  return (
+    <section className={`hero2 ${side ? 'with-side' : ''}`}>
+      <div className="hero-main">
+        <div className="hero-label">{label}</div>
+        <BigMoney cents={cents} />
+        {children}
+      </div>
+      {side && <div className="hero-side">{side}</div>}
+    </section>
+  )
+}
+
+export interface StripItem { label: ReactNode; value: ReactNode; note?: ReactNode; tone?: 'good' | 'bad'; to?: string }
+/** A flat row of four figures divided by rules. */
+export function StatStrip({ items }: { items: StripItem[] }) {
+  return (
+    <div className="strip">
+      {items.map((x, i) => {
+        const body = <><div className="strip-label">{x.label}</div><div className={`strip-value num ${x.tone ?? ''}`}>{x.value}</div>{x.note && <div className="strip-note">{x.note}</div>}</>
+        return x.to ? <Link key={i} className="strip-cell" to={x.to}>{body}</Link> : <div key={i} className="strip-cell">{body}</div>
+      })}
+    </div>
+  )
+}

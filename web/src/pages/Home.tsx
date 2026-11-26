@@ -1,9 +1,8 @@
-import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { useStore } from '../store'
 import { Money, type Cents } from '../core/money'
 import { isActiveProject, projectTypeLabel, projectStatusLabel, type Project } from '../core/models'
-import { EntryList, Icon, Section, Tile } from '../ui/common'
+import { EntryList, Hero, Icon, Section, StatStrip, Tile } from '../ui/common'
 import { recordsLink } from './Activity'
 import { cashPlan, missingReceipts } from '../core/planning'
 import { dueTemplates } from './Reports'
@@ -30,7 +29,9 @@ export function myStake(l: Ledger, uid: string, p: Project) {
   }
 }
 
-interface Todo { to: string; icon: string; text: string; detail?: string; tone?: 'bad' | 'warn' }
+interface Todo { to: string; kicker: string; title: string; sub?: string; amount?: string; status?: string; tone?: 'bad' | 'warn' }
+
+const shortDay = (d?: string | null) => d ? new Date(d + 'T00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : ''
 
 /** What needs this partner, most urgent first. Bookkeeping chores for the whole LLC come last as one line. */
 function todos(app: ReturnType<typeof useStore>): Todo[] {
@@ -38,27 +39,24 @@ function todos(app: ReturnType<typeof useStore>): Todo[] {
   const me = app.me
   const h = l.home()
   const out: Todo[] = []
-  const approvals = h.needs_review.filter((e) => e.status.text === 'Needs approval' && e.created_by !== me)
-  const requests = h.needs_review.filter((e) => e.status.text === 'Requested' && e.partner_id !== me)
-  if (h.overdue.length) out.push({ to: recordsLink('Overdue bills', h.overdue.map((e) => e.ref)), icon: 'alert', tone: 'bad',
-    text: `${h.overdue.length} overdue bill${h.overdue.length === 1 ? '' : 's'}`, detail: fmt(h.overdue.reduce((a, e) => a + l.balance(e.ref.id).outstanding_cents, 0)) })
-  if (approvals.length) out.push({ to: recordsLink('Waiting for your approval', approvals.map((e) => e.ref)), icon: 'check', tone: 'warn',
-    text: `${approvals.length} item${approvals.length === 1 ? '' : 's'} waiting for your approval`, detail: fmt(approvals.reduce((a, e) => a + e.amount_cents, 0)) })
-  if (requests.length) out.push({ to: recordsLink('Reimbursement requests', requests.map((e) => e.ref)), icon: 'users', tone: 'warn',
-    text: `${requests.map((e) => l.payerName(e.partner_id ?? null)).join(', ')} asked to be paid back`, detail: fmt(requests.reduce((a, e) => a + e.amount_cents, 0)) })
+  for (const e of h.overdue) out.push({ to: `/records/bill/${e.ref.id}`, kicker: 'Overdue bill', title: e.title, tone: 'bad',
+    sub: [l.project(e.project_id)?.nickname, `due ${shortDay(e.due_date)}`].filter(Boolean).join(' · '), amount: fmt(l.balance(e.ref.id).outstanding_cents), status: 'Overdue' })
+  for (const e of h.needs_review.filter((x) => x.status.text === 'Needs approval' && x.created_by !== me))
+    out.push({ to: `/records/${e.ref.kind}/${e.ref.id}`, kicker: 'Waiting for your approval', title: e.subtitle.split(' · ').slice(-1)[0] || e.title, sub: e.title, amount: fmt(e.amount_cents), status: 'Needs approval', tone: 'warn' })
+  for (const e of h.needs_review.filter((x) => x.status.text === 'Requested' && x.partner_id !== me))
+    out.push({ to: `/records/${e.ref.kind}/${e.ref.id}`, kicker: 'Reimbursement request', title: `${l.payerName(e.partner_id ?? null)} asked to be paid back`, sub: `Requested ${shortDay(e.date)}`, amount: fmt(e.amount_cents), status: 'Requested', tone: 'warn' })
   const missing = missingReceipts(l).filter((m) => m.owner === me).length
-  if (missing) out.push({ to: '/missing', icon: 'receipt', tone: 'warn', text: `${missing} of your receipts need a photo or match` })
+  if (missing) out.push({ to: '/missing', kicker: 'Missing receipts', title: 'Missing receipts', sub: 'Assigned to you', amount: `${missing} receipt${missing === 1 ? '' : 's'}`, status: 'View records →', tone: 'warn' })
   const plan = cashPlan(l)
-  if (plan.shortfall) out.push({ to: '/cash', icon: 'cash', tone: 'bad',
-    text: `LLC account short ${fmt(plan.shortfall.short_by_cents)} by ${new Date(plan.shortfall.date + 'T00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}` })
+  if (plan.shortfall) out.push({ to: '/cash', kicker: 'Cash short', title: 'LLC account will run short', sub: `by ${shortDay(plan.shortfall.date)}`, amount: fmt(plan.shortfall.short_by_cents), status: 'Open cash plan', tone: 'bad' })
   const openIssues = (l.s.issue_reports ?? []).filter((r) => r.status === 'open').length
-  if (openIssues) out.push({ to: '/issues', icon: 'alert', text: `${openIssues} reported issue${openIssues === 1 ? '' : 's'} to look at` })
-  if (app.draftList.length) out.push({ to: '/drafts', icon: 'tray', text: `${app.draftList.length} unfinished draft${app.draftList.length === 1 ? '' : 's'} in this browser` })
+  if (openIssues) out.push({ to: '/issues', kicker: 'Reported issues', title: 'Reported issues', sub: 'From partners', amount: String(openIssues), status: 'Open' })
+  if (app.draftList.length) out.push({ to: '/drafts', kicker: 'Drafts', title: 'Unfinished drafts', sub: 'In this browser only', amount: String(app.draftList.length) })
   const inbox = l.s.inbox_items.filter((i) => i.status === 'new').length
   const unmatched = l.s.statement_lines.filter((x) => x.status === 'unmatched').length
   const due = dueTemplates(l.s.entry_templates, l.today).length
-  const chores = [inbox && `${inbox} in inbox`, unmatched && `${unmatched} card charges to match`, due && `${due} recurring due`].filter(Boolean)
-  if (chores.length) out.push({ to: '/books', icon: 'list', text: 'Bookkeeping', detail: chores.join(' · ') })
+  const chores = [inbox && `${inbox} in inbox`, unmatched && `${unmatched} charges to match`, due && `${due} recurring due`].filter(Boolean)
+  if (chores.length) out.push({ to: '/review', kicker: 'Bookkeeping', title: 'Bookkeeping', sub: chores.join(' · '), status: 'Weekly review →' })
   return out
 }
 
@@ -75,109 +73,109 @@ export function HomePage() {
   // Everything I put in comes back first, plus my profit share on each project, less what's already been paid out to me.
   const expected = Math.max((mine?.put_in_cents ?? 0) + stakes.reduce((a, { s }) => a + (s.my_profit_cents ?? 0), 0) - bal.distributions_cents, 0)
   const list = todos(app)
+  const top = list[0]
   const over = mine?.over_share_cents ?? 0
+  const h = l.home()
+  const plan = cashPlan(l)
   return (
     <div className="stack home">
-      <div className="hello">
+      <div className="page-title">
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div className="small muted">{app.workspace?.name}{app.lastSynced ? ` · updated ${app.lastSynced.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` : ''}</div>
           <h1>{greeting()}, {firstName(name)}</h1>
+          <div className="sub">{new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}{app.lastSynced ? ` · updated ${app.lastSynced.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` : ''}</div>
         </div>
-        <Link className="btn icon" to="/activity" aria-label="Search records" title="Search"><Icon name="search" /></Link>
-        <button className="btn icon" onClick={() => app.reload()} disabled={app.syncing} aria-label="Refresh" title="Refresh"><Icon name="refresh" /></button>
+        <button className="btn" onClick={() => app.reload()} disabled={app.syncing} aria-label="Refresh"><Icon name="refresh" /></button>
+        <Link className="btn primary" to="/review">Open weekly review ↗</Link>
       </div>
 
-      <section className="card hero" aria-label="My position">
-        <div className="hero-head"><h2>My position</h2><span className="spacer" /><Link className="small" to={`/partners/${me}`}>Details</Link></div>
-        <div className="hero-grid">
-          <Stat label="I've put in" cents={mine?.put_in_cents ?? 0} note={`${fmt(mine?.contributed_cents ?? 0)} to the LLC · ${fmt(mine?.paid_personally_cents ?? 0)} from my pocket`} big />
-          <Stat label="LLC owes me" cents={bal.owed_cents} note={bal.pending_reimbursement_cents ? `${fmt(bal.pending_reimbursement_cents)} requested` : 'for receipts I paid'}
-            action={bal.owed_cents > 0 ? <button className="btn link" onClick={() => app.open({ type: 'reimbursement', partnerId: me })}>Request it</button> : undefined} />
-          <Stat label="vs my share" cents={over} signed tone={over < 0 ? 'bad' : over > 0 ? 'good' : undefined}
-            note={over > 0 ? 'more than my share' : over < 0 ? 'behind my share' : 'even with partners'} />
-          <Stat label="Expected back" cents={expected} note={bal.distributions_cents ? `${fmt(bal.distributions_cents)} already paid out` : 'what I put in + my profit share'} tone="good" />
-        </div>
-      </section>
+      <Hero label="What I’ve put in" cents={mine?.put_in_cents ?? 0}
+        side={top ? (
+          <>
+            <div className="kicker">{top.kicker}</div>
+            <div className="side-title">{top.title}</div>
+            <div className="side-sub">{[top.amount, top.sub].filter(Boolean).join(' · ')}</div>
+            <Link className="side-link" to={top.to}>Review ↗</Link>
+          </>
+        ) : (<><div className="kicker">All caught up</div><div className="side-title">Nothing needs you</div><div className="side-sub">New bills and requests show up here.</div></>)}>
+        <div className="hero-foot">{fmt(mine?.contributed_cents ?? 0)} to the LLC account · {fmt(mine?.paid_personally_cents ?? 0)} paid from my pocket{mine?.reimbursed_cents ? ` · ${fmt(mine.reimbursed_cents)} paid back` : ''}</div>
+        <Link className="hero-link" to={`/partners/${me}`}>Open my ledger ↗</Link>
+      </Hero>
 
-      {list.length > 0 ? (
-        <Section title="Needs you">
+      <StatStrip items={[
+        { label: 'LLC owes me', value: Money.format(bal.owed_cents), note: bal.pending_reimbursement_cents ? `${fmt(bal.pending_reimbursement_cents)} requested` : 'For receipts I paid personally', to: `/partners/${me}` },
+        { label: 'Vs my share of costs', value: `${over > 0 ? '+' : ''}${Money.format(over)}`, tone: over < 0 ? 'bad' : over > 0 ? 'good' : undefined, note: over > 0 ? 'I’ve covered more than my share' : over < 0 ? 'Behind my share' : 'Even with partners', to: '/partners' },
+        { label: 'Expected back', value: Money.format(expected), tone: 'good', note: bal.distributions_cents ? `${fmt(bal.distributions_cents)} already paid out` : 'Put in + my profit share' },
+        { label: 'LLC cash due, 30 days', value: Money.format(plan.total_cents), tone: plan.shortfall ? 'bad' : undefined, note: plan.shortfall ? `Short ${fmt(plan.shortfall.short_by_cents)} by ${shortDay(plan.shortfall.date)}` : 'Covered by the LLC account', to: '/cash' },
+      ]} />
+
+      <div className="grid2">
+        <Section title="My projects" action={<Link to="/projects" className="small bold">All projects ↗</Link>}>
+          {stakes.map(({ p, s }) => <StakeRow key={p.id} project={p} stake={s} />)}
+          {stakes.length === 0 && <div className="empty">No projects yet. <button className="btn link" onClick={() => app.open({ type: 'project' })}>Add one</button></div>}
+        </Section>
+        <Section title="Needs attention" action={list.length ? <span className="count-pill">{list.length}</span> : undefined}>
+          {list.length === 0 && <div className="empty">All caught up.</div>}
           {list.map((t) => (
-            <Link key={t.text} className="item todo" to={t.to}>
-              <span className={`todo-icon ${t.tone ?? ''}`}><Icon name={t.icon} size={16} /></span>
-              <span className="grow"><span className="title">{t.text}</span>{t.detail && <span className="subtitle"> {t.detail}</span>}</span>
-              <Icon name="chevron" size={14} />
+            <Link key={t.kicker + t.title + t.to} className="item dot-row" to={t.to}>
+              <span className={`dot ${t.tone ?? ''}`} />
+              <span className="grow"><div className="title">{t.title}</div>{t.sub && <div className="subtitle">{t.sub}</div>}</span>
+              <span className="right">{t.amount && <div className="bold num">{t.amount}</div>}{t.status && <div className={`small ${t.tone ?? 'muted'}`}>{t.status}</div>}</span>
             </Link>
           ))}
         </Section>
-      ) : <div className="card empty" style={{ textAlign: 'center' }}><Icon name="check" /> All caught up. Nothing needs you right now.</div>}
+      </div>
 
-      <Section title="My projects" action={<Link to="/projects" className="small">All projects</Link>} plain>
-        <div className="proj-cards">
-          {stakes.map(({ p, s }) => <StakeCard key={p.id} project={p} stake={s} />)}
-          {stakes.length === 0 && <div className="card empty">No projects yet. <button className="btn link" onClick={() => app.open({ type: 'project' })}>Add one</button></div>}
-        </div>
-      </Section>
-
-      <Section title="Partners" action={<Link to="/partners" className="small">Who put in what</Link>} plain>
-        <div className="partner-strip">
-          {pool.partners.map((p) => (
-            <Link key={p.member.user_id} className={`card partner-chip ${p.member.user_id === me ? 'me' : ''}`} to={`/partners/${p.member.user_id}`}>
-              <span className="avatar">{initials(p.member.display_name)}</span>
-              <span className="grow">
-                <span className="title">{p.member.display_name}</span>
-                <span className="subtitle num">Put in {fmt(p.put_in_cents)}</span>
-              </span>
-              <span className={`num bold ${p.over_share_cents < 0 ? 'bad' : p.over_share_cents > 0 ? 'good' : ''}`} title="Compared with their share of costs">
-                {p.over_share_cents > 0 ? '+' : ''}{fmt(p.over_share_cents)}
-              </span>
+      <div className="grid2">
+        <Section title="Due in the next 14 days">
+          {h.due_soon.length === 0 && <div className="empty">No bills due in the next 14 days.</div>}
+          {h.due_soon.map((e) => (
+            <Link key={e.ref.id} className="item dot-row" to={`/records/${e.ref.kind}/${e.ref.id}`}>
+              <span className="dot warn" />
+              <span className="grow"><div className="title">{e.title}</div><div className="subtitle">{l.project(e.project_id)?.nickname} · Due {shortDay(e.due_date)}</div></span>
+              <span className="right"><div className="bold num">{Money.format(l.balance(e.ref.id).outstanding_cents)} due</div><div className="small muted">{e.status.text}</div></span>
             </Link>
           ))}
-        </div>
-      </Section>
+        </Section>
+        <Section title="Partner balances" action={<Link to="/partners" className="small bold">View partners ↗</Link>}>
+          {pool.partners.map((p) => (
+            <Link key={p.member.user_id} className={`item ${p.member.user_id === me ? 'me' : ''}`} to={`/partners/${p.member.user_id}`}>
+              <span className="avatar sm">{initials(p.member.display_name)}</span>
+              <span className="grow"><div className="title">{p.member.display_name}{p.member.user_id === me ? ' · me' : ''}</div><div className="subtitle num">Put in {fmt(p.put_in_cents)} · owed {fmt(l.partnerBalance(p.member.user_id).owed_cents)}</div></span>
+              <span className="right"><div className={`bold num ${p.over_share_cents < 0 ? 'bad' : p.over_share_cents > 0 ? 'good' : ''}`}>{p.over_share_cents > 0 ? '+' : ''}{fmt(p.over_share_cents)}</div><div className="small muted">vs share</div></span>
+            </Link>
+          ))}
+        </Section>
+      </div>
 
       <LLCOverview />
     </div>
   )
 }
 
-function Stat({ label, cents, note, tone, signed, big, action }: { label: string; cents: Cents; note?: string; tone?: 'good' | 'bad'; signed?: boolean; big?: boolean; action?: ReactNode }) {
-  return (
-    <div className={`stat ${big ? 'big' : ''}`}>
-      <div className="stat-label">{label}</div>
-      <div className={`stat-value num ${tone ?? ''}`}>{signed && cents > 0 ? '+' : ''}{fmt(cents)}</div>
-      {note && <div className="stat-note">{note}</div>}
-      {action}
-    </div>
-  )
-}
-
-function StakeCard({ project: p, stake: s }: { project: Project; stake: ReturnType<typeof myStake> }) {
+function StakeRow({ project: p, stake: s }: { project: Project; stake: ReturnType<typeof myStake> }) {
   const app = useStore()
   const t = app.ledger.totals(p.id)
   const pct = t.budget_cents > 0 ? Math.min(100, (t.projected_cents / t.budget_cents) * 100) : 0
+  const overCats = app.ledger.categorySummary(p.id).filter((c) => c.budget_cents > 0 && c.remaining_cents < 0).length
   return (
-    <Link className="card stake" to={`/projects/${p.id}`}>
+    <Link className="item stake-row" to={`/projects/${p.id}`}>
       <div className="row">
-        <span className="title">{p.nickname}</span>
-        <span className="spacer" />
-        <span className={`badge ${s.sold ? 'good' : 'neutral'}`}>{projectStatusLabel(p)}</span>
+        <span className={`house ${s.sold ? 'sold' : ''}`}><Icon name="home" size={16} /></span>
+        <span className="grow"><div className="title">{p.nickname}</div><div className="subtitle">{[p.address, projectTypeLabel(p)].filter(Boolean).join(' · ')}</div></span>
+        {overCats > 0 ? <span className="badge warn">{overCats} categor{overCats === 1 ? 'y' : 'ies'} over</span> : <span className={`badge ${s.sold ? 'neutral' : 'good'}`}>{projectStatusLabel(p)}</span>}
       </div>
-      <div className="small muted">{projectTypeLabel(p)}{p.address ? ` · ${p.address}` : ''}</div>
       <div className="stake-nums">
-        <div><div className="stat-label">I put in</div><div className="num bold">{fmt(s.put_in_cents)}</div></div>
-        <div><div className="stat-label">My split</div><div className="num bold">{s.share_bps / 100}%</div></div>
-        <div>
-          <div className="stat-label">{s.sold ? 'My profit' : 'Est. profit'}</div>
-          <div className={`num bold ${(s.my_profit_cents ?? 0) < 0 ? 'bad' : 'good'}`}>{s.my_profit_cents == null ? '—' : fmt(s.my_profit_cents)}</div>
-        </div>
+        <div><div className="strip-label">I put in</div><div className="num bold">{fmt(s.put_in_cents)}</div></div>
+        <div><div className="strip-label">My split</div><div className="num bold">{s.share_bps / 100}%</div></div>
+        <div><div className="strip-label">{s.sold ? 'My profit' : 'Est. profit'}</div><div className={`num bold ${(s.my_profit_cents ?? 0) < 0 ? 'bad' : 'good'}`}>{s.my_profit_cents == null ? '—' : fmt(s.my_profit_cents)}</div></div>
       </div>
       {s.sold ? (
         <div className="small">{s.still_to_come_cents ? <span className="warn bold">{fmt(s.still_to_come_cents)} still to be paid to me</span> : <span className="good bold">Paid out {fmt(s.paid_out_cents)}</span>}</div>
       ) : (
         <>
+          <div className="row small"><span className="muted">Projected spend</span><span className="spacer" /><span className="num bold">{fmt(t.projected_cents)}{t.budget_cents > 0 ? ` / ${fmt(t.budget_cents)}` : ''}</span></div>
           {t.budget_cents > 0 && <div className={`progress ${t.remaining_cents < 0 ? 'over' : ''}`}><div style={{ width: `${pct}%` }} /></div>}
-          <div className="small muted num">{t.budget_cents > 0 ? `${fmt(t.projected_cents)} of ${fmt(t.budget_cents)} budget` : `${fmt(t.projected_cents)} spent and committed`}
-            {s.my_profit_cents == null && ' · add an expected sale price to see profit'}</div>
+          <div className="row small"><span className="muted num">{t.budget_cents > 0 ? `${fmt(t.remaining_cents)} remaining` : 'No budget set'}</span><span className="spacer" /><span className="bold link-text">View project ↗</span></div>
         </>
       )}
     </Link>
@@ -269,7 +267,7 @@ export function BooksPage() {
   ]
   return (
     <div className="stack">
-      <div className="hello"><h1 style={{ flex: 1 }}>Books</h1></div>
+      <div className="page-title"><h1 style={{ flex: 1 }}>More tools</h1></div>
       {groups.map(([title, rows]) => (
         <Section key={title} title={title}>
           {rows.map(([to, icon, label, desc]) => (
