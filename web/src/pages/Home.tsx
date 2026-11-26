@@ -43,6 +43,7 @@ export function HomePage() {
   return (
     <div className="stack">
       <PageHead title={app.workspace?.name ?? 'Home'} sub={app.lastSynced ? `Updated ${app.lastSynced.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` : undefined}>
+        <Link className="btn" to="/activity" aria-label="Search records"><Icon name="search" />Search</Link>
         <button className="btn" onClick={() => app.reload()} disabled={app.syncing}><Icon name="refresh" />{app.syncing ? 'Refreshing…' : 'Refresh'}</button>
       </PageHead>
 

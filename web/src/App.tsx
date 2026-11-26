@@ -96,6 +96,18 @@ function AddMenu({ mobile, onClose }: { mobile?: boolean; onClose: () => void })
   )
 }
 
+/** Search from any page: opens Activity with the results. */
+function SidebarSearch() {
+  const go = useNavigate()
+  const [text, setText] = useState('')
+  return (
+    <form role="search" style={{ position: 'relative', marginBottom: 8 }} onSubmit={(e) => { e.preventDefault(); if (text.trim()) { go(`/activity?q=${encodeURIComponent(text.trim())}`); setText('') } }}>
+      <span style={{ position: 'absolute', left: 10, top: 9, color: 'var(--muted)' }}><Icon name="search" size={16} /></span>
+      <input type="search" value={text} onChange={(e) => setText(e.target.value)} placeholder="Search records" aria-label="Search records" style={{ paddingLeft: 32, minHeight: 36 }} />
+    </form>
+  )
+}
+
 function Shell() {
   const app = useStore()
   const [menu, setMenu] = useState<'side' | 'tab' | null>(null)
@@ -122,6 +134,7 @@ function Shell() {
           <button className="btn primary" style={{ width: '100%' }} onClick={() => setMenu(menu ? null : 'side')}><Icon name="plus" />Add</button>
           {menu === 'side' && <AddMenu onClose={() => setMenu(null)} />}
         </div>
+        <SidebarSearch />
         {nav.map((n) => <NavLink key={n.to} to={n.to} end={n.end} className="nav-link"><Icon name={n.icon} />{n.label}</NavLink>)}
         <NavLink to="/review" className="nav-link"><Icon name="check" />Weekly review</NavLink>
         <NavLink to="/inbox" className="nav-link"><Icon name="tray" />Inbox{inboxCount ? <span className="nav-count">{inboxCount}</span> : null}</NavLink>
