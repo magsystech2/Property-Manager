@@ -5,8 +5,9 @@ import { useStore } from '../store'
 import { Days, Money, type Cents } from '../core/money'
 import { dedupe } from '../core/ledger'
 import { isActiveProject, projectStatusLabel, projectTypeLabel, type EntryRef } from '../core/models'
-import { AttachmentRow, EntryList, Icon, KV, MoneyKV, MoneyText, PageHead, Section, Segmented, recordPath } from '../ui/common'
-import { ProjectRow } from './Home'
+import { AttachmentRow, EntryList, Hero, Icon, StatStrip, KV, MoneyKV, MoneyText, PageHead, Section, Segmented, recordPath } from '../ui/common'
+import { StakeRow, myStake } from './Home'
+import { MoneyAtAGlance } from '../ui/Glance'
 import { ProjectForecast } from './Forecast'
 import { CostBasisCard, ProjectMaterials, ProjectSale } from './Sale'
 import { recordsLink } from './Activity'
@@ -21,10 +22,10 @@ export function ProjectsPage() {
         <button className="btn primary" onClick={() => app.open({ type: 'project' })}><Icon name="plus" />New project</button>
       </PageHead>
       <Section title="Active">
-        {ps.filter(isActiveProject).map((p) => <ProjectRow key={p.id} project={p} />)}
+        {ps.filter(isActiveProject).map((p) => <StakeRow key={p.id} project={p} stake={myStake(app.ledger, app.me ?? '', p)} />)}
         {ps.filter(isActiveProject).length === 0 && <div className="empty">No active projects yet.</div>}
       </Section>
-      {sold.length > 0 && <Section title="Sold">{sold.map((p) => <ProjectRow key={p.id} project={p} />)}</Section>}
+      {sold.length > 0 && <Section title="Sold">{sold.map((p) => <StakeRow key={p.id} project={p} stake={myStake(app.ledger, app.me ?? '', p)} />)}</Section>}
       <Section>
         <Link className="item" to="/vendors"><Icon name="store" /><span className="grow">Vendors and contractors</span><Icon name="chevron" /></Link>
       </Section>
@@ -50,6 +51,7 @@ export function ProjectDetailPage() {
           <Link className="btn" to={`/export?project=${p.id}`}><Icon name="download" />CSV</Link>
         </div>
       </PageHead>
+      <ProjectHero pid={p.id} />
       <Segmented value={tab} onChange={setTab} options={[['overview', 'Overview'], ['budget', 'Budget'], ['forecast', 'Forecast'], ['sale', 'Sale and split'], ['materials', 'Materials'], ['activity', 'Activity'], ['vendors', 'Vendors'], ['files', 'Files']]} />
       {tab === 'overview' && <Overview pid={p.id} />}
       {tab === 'budget' && <Budget pid={p.id} />}
@@ -72,8 +74,9 @@ function Overview({ pid }: { pid: string }) {
   const sources = lines.flatMap((x) => x.sources)
   const link = (label: string, cents: Cents, refs: EntryRef[], why: string) => <MoneyKV label={label} cents={cents} to={recordsLink(`${p.nickname}: ${label}`, dedupe(refs), why)} />
   const commitments = l.s.commitments.filter((c) => c.project_id === pid && c.status !== 'void')
-  const partners = l.s.members.map((m) => l.partnerBalance(m.user_id, pid)).filter((b) => b.out_of_pocket_cents !== 0 || b.contributions_cents !== 0)
   return (
+    <div className="stack">
+    <MoneyAtAGlance projectId={pid} title="Who paid what on this project" />
     <div className="grid2">
       <div className="stack">
         <Section title="Spending" footer="Projected spend = paid + unpaid billed + committed not billed. Remaining = budget − projected spend.">
@@ -111,18 +114,6 @@ function Overview({ pid }: { pid: string }) {
             )
           })}
         </Section>
-        {partners.length > 0 && (
-          <Section title="Partner money on this project">
-            {partners.map((b) => (
-              <Link key={b.member.user_id} className="item" to={`/partners/${b.member.user_id}`}>
-                <div className="grow">
-                  <div className="title">{b.member.display_name}</div>
-                  <div className="subtitle num">Paid personally {Money.format(b.out_of_pocket_cents)} · Contributed {Money.format(b.contributions_cents)}</div>
-                </div>
-              </Link>
-            ))}
-          </Section>
-        )}
         <Section title="Quick actions">
           <button className="item" onClick={() => app.open({ type: 'transaction', draft: newDraft('receipt', pid) })}><Icon name="receipt" /><span className="grow">Add expense for this project</span></button>
           <button className="item" onClick={() => app.open({ type: 'transaction', draft: newDraft('bill', pid) })}><Icon name="doc" /><span className="grow">Add bill for this project</span></button>
@@ -131,6 +122,42 @@ function Overview({ pid }: { pid: string }) {
         </Section>
       </div>
     </div>
+    </div>
+  )
+}
+
+/** Headline for a project: budget left (or sale result), the worst over-budget category, and this partner's stake. */
+function ProjectHero({ pid }: { pid: string }) {
+  const app = useStore()
+  const l = app.ledger
+  const p = l.project(pid)!
+  const t = l.totals(pid)
+  const s = myStake(l, app.me ?? '', p)
+  const worst = l.categorySummary(pid).filter((c) => c.budget_cents > 0 && c.remaining_cents < 0).sort((a, b) => a.remaining_cents - b.remaining_cents)[0]
+  const pct = t.budget_cents > 0 ? (t.projected_cents / t.budget_cents) * 100 : 0
+  const f = (c: Cents) => Money.format(c, false)
+  return (
+    <>
+      <Hero label={s.sold ? 'Profit on the sale' : t.remaining_cents < 0 ? 'Over budget after projected spend' : 'Remaining after projected spend'}
+        cents={s.sold ? (s.profit_cents ?? 0) : Math.abs(t.remaining_cents)}
+        side={worst ? (
+          <><div className="kicker">Over budget</div><div className="side-title">{worst.name}</div>
+            <div className="side-sub">{f(worst.projected_cents)} projected · {f(worst.budget_cents)} budget</div>
+            <span className="side-link">{f(-worst.remaining_cents)} over</span></>
+        ) : (
+          <><div className="kicker">My stake</div><div className="side-title">{f(s.put_in_cents)} put in</div>
+            <div className="side-sub">{s.share_bps / 100}% split · {s.my_profit_cents == null ? 'add an expected sale price for profit' : `${s.sold ? '' : 'est. '}profit ${f(s.my_profit_cents)}`}</div></>
+        )}>
+        {!s.sold && t.budget_cents > 0 && <div className="hero-bar"><div style={{ width: `${Math.min(pct, 100)}%` }} /></div>}
+        {!s.sold && <div className="hero-foot">{t.budget_cents > 0 ? `${pct.toFixed(1)}% of the ${f(t.budget_cents)} budget projected` : 'No budget set yet'}</div>}
+      </Hero>
+      <StatStrip items={[
+        { label: 'Approved budget', value: Money.format(t.budget_cents) },
+        { label: 'Projected spend', value: Money.format(t.projected_cents), note: t.budget_cents ? `${pct.toFixed(1)}% of budget` : undefined },
+        { label: 'I put in', value: Money.format(s.put_in_cents), note: `${s.share_bps / 100}% split` },
+        { label: s.sold ? 'My profit' : 'My est. profit', value: s.my_profit_cents == null ? '—' : Money.format(s.my_profit_cents), tone: (s.my_profit_cents ?? 0) < 0 ? 'bad' : 'good', note: s.sold && s.still_to_come_cents ? `${f(s.still_to_come_cents)} still to be paid to me` : undefined },
+      ]} />
+    </>
   )
 }
 

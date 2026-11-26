@@ -4,7 +4,7 @@ import { useStore, store } from './store'
 import { newDraft } from './drafts'
 import { Icon } from './ui/common'
 import { Onboarding } from './pages/Onboarding'
-import { HomePage } from './pages/Home'
+import { HomePage, BooksPage } from './pages/Home'
 import { ProjectsPage, ProjectDetailPage } from './pages/Projects'
 import { ActivityPage, RecordsPage } from './pages/Activity'
 import { PartnersPage, PartnerDetailPage } from './pages/Partners'
@@ -59,13 +59,14 @@ function currentProjectId(pathname: string): string | null {
   return m && store.ledger.project(m[1]) ? m[1] : null
 }
 
+const PRIMARY_ADD = 4
 const addActions: { label: string; desc: string; icon: string; open: (projectId: string | null) => void; to?: string }[] = [
   { label: 'Scan receipt', desc: 'Take a photo, then fill in the details', icon: 'camera', open: (pid) => scanReceipt(pid) },
   { label: 'Add expense', desc: 'A receipt, already paid', icon: 'receipt', open: (pid) => store.open({ type: 'transaction', draft: newDraft('receipt', pid) }) },
+  { label: 'Say it', desc: 'Speak or type a sentence', icon: 'mic', open: () => store.open({ type: 'voice' }) },
   { label: 'Add bill', desc: 'An invoice still owed', icon: 'doc', open: (pid) => store.open({ type: 'transaction', draft: newDraft('bill', pid) }) },
   { label: 'Record payment', desc: 'Money paid on a bill', icon: 'cash', open: () => store.open({ type: 'payment' }) },
   { label: 'Add to inbox', desc: 'Drop a receipt or invoice to file later', icon: 'tray', open: () => {}, to: '/inbox' },
-  { label: 'Say it', desc: 'Speak or type a sentence', icon: 'mic', open: () => store.open({ type: 'voice' }) },
   { label: 'Add contribution', desc: 'Capital a partner put in', icon: 'bank', open: (pid) => store.open({ type: 'contribution', partnerId: store.me, projectId: pid }) },
   { label: 'Reimburse a partner', desc: 'Pay back personal spending', icon: 'users', open: () => store.open({ type: 'reimbursement' }) },
   { label: 'Add commitment', desc: 'A contract or agreed quote', icon: 'sign', open: (pid) => store.open({ type: 'commitment', projectId: pid }) },
@@ -79,6 +80,7 @@ function AddMenu({ mobile, onClose }: { mobile?: boolean; onClose: () => void })
   const loc = useLocation()
   const go = useNavigate()
   const pid = currentProjectId(loc.pathname)
+  const [all, setAll] = useState(false)
   useEffect(() => {
     const h = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) onClose() }
     setTimeout(() => window.addEventListener('mousedown', h))
@@ -87,26 +89,34 @@ function AddMenu({ mobile, onClose }: { mobile?: boolean; onClose: () => void })
   return (
     <div ref={ref} className={`card menu-list ${mobile ? 'mobile-add-menu' : 'add-menu'}`} role="menu">
       {pid && <div className="small muted" style={{ padding: '6px 12px' }}>For {store.ledger.project(pid)?.nickname}</div>}
-      {addActions.map((a) => (
+      {(all ? addActions : addActions.slice(0, PRIMARY_ADD)).map((a) => (
         <button key={a.label} role="menuitem" onClick={() => { if (a.to) go(a.to); else a.open(pid); onClose() }}>
           <Icon name={a.icon} /><span><div style={{ fontWeight: 600 }}>{a.label}</div><div className="desc">{a.desc}</div></span>
         </button>
       ))}
+      {!all && <button className="more-add" onClick={() => setAll(true)}>More ways to add…</button>}
     </div>
   )
 }
 
 /** Search from any page: opens Activity with the results. */
-function SidebarSearch() {
+function TopSearch() {
   const go = useNavigate()
   const [text, setText] = useState('')
   return (
-    <form role="search" style={{ position: 'relative', marginBottom: 8 }} onSubmit={(e) => { e.preventDefault(); if (text.trim()) { go(`/activity?q=${encodeURIComponent(text.trim())}`); setText('') } }}>
-      <span style={{ position: 'absolute', left: 10, top: 9, color: 'var(--muted)' }}><Icon name="search" size={16} /></span>
-      <input type="search" value={text} onChange={(e) => setText(e.target.value)} placeholder="Search records" aria-label="Search records" style={{ paddingLeft: 32, minHeight: 36 }} />
+    <form role="search" className="top-search" onSubmit={(e) => { e.preventDefault(); if (text.trim()) { go(`/activity?q=${encodeURIComponent(text.trim())}`); setText('') } }}>
+      <Icon name="search" size={15} />
+      <input type="search" value={text} onChange={(e) => setText(e.target.value)} placeholder="Search records" aria-label="Search records" />
     </form>
   )
 }
+
+const crumbs: [RegExp, string][] = [
+  [/^\/$/, 'Overview'], [/^\/projects\/./, 'Projects / Project'], [/^\/projects/, 'Projects'], [/^\/partners\/./, 'Partners / Partner'], [/^\/partners/, 'Partners'],
+  [/^\/activity|^\/records/, 'Activity'], [/^\/review/, 'Finance / Weekly review'], [/^\/inbox/, 'Finance / Receipt inbox'], [/^\/statements/, 'Finance / Statements'],
+  [/^\/cash/, 'Finance / Cash plan'], [/^\/reports/, 'Finance / Reports'], [/^\/books/, 'More tools'], [/^\/settings/, 'Settings'],
+]
+const initials = (s: string) => s.split(/\s+/).map((w) => w[0]).join('').slice(0, 2).toUpperCase()
 
 function Shell() {
   const app = useStore()
@@ -114,44 +124,53 @@ function Shell() {
   const loc = useLocation()
   // A new screen starts clean: scroll to top and drop an error banner left from the last one.
   useEffect(() => { window.scrollTo(0, 0); if (store.error) { store.error = null; store.emit() } }, [loc.pathname])
-  const nav = [
-    { to: '/', label: 'Home', icon: 'home', end: true },
-    { to: '/projects', label: 'Projects', icon: 'folder' },
-    { to: '/activity', label: 'Activity', icon: 'list' },
-    { to: '/partners', label: 'Partners', icon: 'users' },
-  ]
   const demo = app.demo
   const inboxCount = app.ledger.s.inbox_items.filter((i) => i.status === 'new').length
   const unmatchedCount = app.ledger.s.statement_lines.filter((x) => x.status === 'unmatched').length
   const dueCount = dueTemplates(app.ledger.s.entry_templates, app.ledger.today).length
   const issueCount = (app.ledger.s.issue_reports ?? []).filter((r) => r.status === 'open').length
+  const booksCount = inboxCount + unmatchedCount + dueCount + issueCount
+  const moreCount = dueCount + issueCount
+  const count = (n: number) => n ? <span className="nav-count">{n}</span> : null
+  const crumb = crumbs.find(([re]) => re.test(loc.pathname))?.[1] ?? ''
+  const name = app.myMember?.display_name ?? app.backend?.userEmail() ?? ''
   return (
     <div className="app">
       <aside className="sidebar">
-        <div className="brand">Project Ledger</div>
-        <div className="brand-sub">{app.workspace?.name}</div>
-        <div style={{ position: 'relative', marginBottom: 10 }}>
-          <button className="btn primary" style={{ width: '100%' }} onClick={() => setMenu(menu ? null : 'side')}><Icon name="plus" />Add</button>
+        <div className="brand-row">
+          <span className="logo"><Icon name="list" size={18} /></span>
+          <span><div className="brand">Project Ledger</div><div className="brand-sub">{app.workspace?.name}</div></span>
+        </div>
+        <div style={{ position: 'relative', margin: '4px 0 10px' }}>
+          <button className="btn add-btn" style={{ width: '100%' }} onClick={() => setMenu(menu ? null : 'side')}><Icon name="plus" />Add</button>
           {menu === 'side' && <AddMenu onClose={() => setMenu(null)} />}
         </div>
-        <SidebarSearch />
-        {nav.map((n) => <NavLink key={n.to} to={n.to} end={n.end} className="nav-link"><Icon name={n.icon} />{n.label}</NavLink>)}
+        <div className="nav-group">Workspace</div>
+        <NavLink to="/" end className="nav-link"><Icon name="home" />Overview</NavLink>
+        <NavLink to="/projects" className="nav-link"><Icon name="folder" />Projects</NavLink>
+        <NavLink to="/activity" className="nav-link"><Icon name="list" />Activity</NavLink>
+        <NavLink to="/partners" className="nav-link"><Icon name="users" />Partners</NavLink>
+        <div className="nav-group">Finance</div>
         <NavLink to="/review" className="nav-link"><Icon name="check" />Weekly review</NavLink>
-        <NavLink to="/inbox" className="nav-link"><Icon name="tray" />Inbox{inboxCount ? <span className="nav-count">{inboxCount}</span> : null}</NavLink>
-        <NavLink to="/statements" className="nav-link"><Icon name="bank" />Statements{unmatchedCount ? <span className="nav-count">{unmatchedCount}</span> : null}</NavLink>
-        <NavLink to="/cash" className="nav-link"><Icon name="cash" />Cash needed</NavLink>
+        <NavLink to="/inbox" className="nav-link"><Icon name="tray" />Receipt inbox{count(inboxCount)}</NavLink>
+        <NavLink to="/statements" className="nav-link"><Icon name="bank" />Statements{count(unmatchedCount)}</NavLink>
+        <NavLink to="/cash" className="nav-link"><Icon name="cash" />Cash plan</NavLink>
         <NavLink to="/reports" className="nav-link"><Icon name="chart" />Reports</NavLink>
-        <NavLink to="/recurring" className="nav-link"><Icon name="repeat" />Recurring{dueCount ? <span className="nav-count">{dueCount}</span> : null}</NavLink>
-        <NavLink to="/vendors" className="nav-link"><Icon name="store" />Vendors</NavLink>
-        <NavLink to="/import" className="nav-link"><Icon name="list" />Bulk upload</NavLink>
-        <NavLink to="/export" className="nav-link"><Icon name="download" />Export CSV</NavLink>
-        <NavLink to="/issues" className="nav-link"><Icon name="alert" />Issues{issueCount ? <span className="nav-count">{issueCount}</span> : null}</NavLink>
-        {app.draftList.length > 0 && <NavLink to="/drafts" className="nav-link"><Icon name="tray" />Drafts ({app.draftList.length})</NavLink>}
+        <details className="nav-more" open={['/recurring', '/vendors', '/import', '/export', '/issues', '/drafts'].some((x) => loc.pathname.startsWith(x)) || undefined}>
+          <summary className="nav-link">More tools{count(moreCount)}</summary>
+          <NavLink to="/recurring" className="nav-link"><Icon name="repeat" />Recurring{count(dueCount)}</NavLink>
+          <NavLink to="/vendors" className="nav-link"><Icon name="store" />Vendors</NavLink>
+          <NavLink to="/import" className="nav-link"><Icon name="list" />Bulk upload</NavLink>
+          <NavLink to="/export" className="nav-link"><Icon name="download" />Export CSV</NavLink>
+          <NavLink to="/issues" className="nav-link"><Icon name="alert" />Issues{count(issueCount)}</NavLink>
+          {app.draftList.length > 0 && <NavLink to="/drafts" className="nav-link"><Icon name="tray" />Drafts ({app.draftList.length})</NavLink>}
+        </details>
         <span className="spacer" />
-        <NavLink to="/settings" className="nav-link"><Icon name="settings" />Settings</NavLink>
-        <div className="small muted" style={{ padding: '6px 10px' }}>
-          {app.isDemo ? 'Demo, this browser only' : `Signed in as ${app.myMember?.display_name ?? app.backend?.userEmail() ?? ''}`}
-        </div>
+        <NavLink to="/settings" className="me-row">
+          <span className="avatar">{initials(name || '?')}</span>
+          <span style={{ minWidth: 0 }}><div className="bold">{name}</div><div className="brand-sub">{app.isDemo ? 'Demo workspace' : 'Settings'}</div></span>
+          <Icon name="settings" size={16} />
+        </NavLink>
       </aside>
       <div className="main">
         {demo && (
@@ -165,6 +184,18 @@ function Shell() {
             <button onClick={() => app.signOut()}>Exit demo</button>
           </div>
         )}
+        <header className="mobile-head">
+          <span className="logo"><Icon name="list" size={16} /></span>
+          <span style={{ flex: 1, minWidth: 0 }}><div className="brand">Project Ledger</div><div className="brand-sub">{app.workspace?.name}</div></span>
+          <NavLink to="/activity" className="mobile-icon" aria-label="Search records"><Icon name="search" /></NavLink>
+          <NavLink to="/settings" className="avatar" aria-label="Settings">{initials(name || '?')}</NavLink>
+        </header>
+        <div className="topbar">
+          <span className="crumb">Workspace <span className="muted">/</span> {crumb}</span>
+          <span className="spacer" />
+          <span className="live-dot">{app.isDemo ? 'Demo data' : 'Live'}</span>
+          <TopSearch />
+        </div>
         <main className="content">
           <Routes>
             <Route path="/" element={<HomePage />} />
@@ -189,6 +220,7 @@ function Shell() {
             <Route path="/reports" element={<ReportsPage />} />
             <Route path="/recurring" element={<RecurringPage />} />
             <Route path="/issues" element={<IssuesPage />} />
+            <Route path="/books" element={<BooksPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </main>
@@ -197,8 +229,8 @@ function Shell() {
         <NavLink to="/" end><Icon name="home" />Home</NavLink>
         <NavLink to="/projects"><Icon name="folder" />Projects</NavLink>
         <button className="add-tab" onClick={() => setMenu(menu ? null : 'tab')} aria-label="Add"><span className="circle"><Icon name="plus" size={22} /></span>Add</button>
-        <NavLink to="/activity"><Icon name="list" />Activity</NavLink>
         <NavLink to="/partners"><Icon name="users" />Partners</NavLink>
+        <NavLink to="/books"><Icon name="tray" />More{booksCount ? <span className="tab-dot" /> : null}</NavLink>
       </nav>
       {menu === 'tab' && <AddMenu mobile onClose={() => setMenu(null)} />}
       <ModalHost />
