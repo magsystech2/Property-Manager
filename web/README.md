@@ -75,6 +75,17 @@ Variables you can set first: `CTID`, `STORAGE` (default `local-lvm`), `BRIDGE` (
 4. `cd /opt/project-ledger/web/deploy && docker compose --profile tailscale up -d --build`
 5. Each partner installs Tailscale on their phone and laptop, signs in (invite them from the admin console), and opens `https://ledger.<your-tailnet>.ts.net`.
 
+**Tailscale Funnel (public link, no domain, no app for partners).** Same setup as above, plus:
+
+1. Admin console → **Access controls**: allow Funnel for the server. Add this to the policy file (or click **Enable Funnel** if the console offers it):
+   ```json
+   "nodeAttrs": [{ "target": ["autogroup:member"], "attr": ["funnel"] }]
+   ```
+2. In `.env`, set `TS_SERVE_FILE=tailscale-funnel.json`, then `docker compose --profile tailscale up -d`.
+3. In Supabase, **Authentication → URL Configuration**: set the Site URL to `https://ledger.<your-tailnet>.ts.net` and add it to Redirect URLs, so confirmation emails link back to the app.
+
+Anyone with the link reaches the sign-in page, but only invited partners with an account get past it; the database's row-level security still applies to every request.
+
 **Cloudflare Tunnel (public link, needs a domain, about $10 a year).** In Cloudflare Zero Trust → Networks → Tunnels, create a tunnel, add a public hostname pointing to `http://ledger-web:80`, put the token in `.env` as `TUNNEL_TOKEN`, then `docker compose --profile tunnel up -d --build`. Nothing is opened on your router.
 
 **Caddy (public link, needs a domain and port forwarding).** Point a DNS record at your public IP, forward ports 80 and 443 to the container, set `LEDGER_DOMAIN`, then `docker compose --profile caddy up -d --build`.
