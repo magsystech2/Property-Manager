@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useStore } from '../store'
 import { Days } from '../core/money'
@@ -102,6 +103,7 @@ function Details({ refx: ref }: { refx: EntryRef }) {
           {e.reference && <KV k="Reference">{e.reference}</KV>}
           {e.tax_cents > 0 && <MoneyKV label="Tax (included)" cents={e.tax_cents} />}
         </Section>
+        <NotesSection refx={ref} notes={e.notes ?? ''} locked={e.status === 'void'} />
         <Splits allocations={l.allocationsForExpense(e.id)} />
       </>
     }
@@ -121,6 +123,7 @@ function Details({ refx: ref }: { refx: EntryRef }) {
           {c && <KV k="Against contract" to={recordPath({ kind: 'commitment', id: c.id })}>{c.description || 'Contract'}</KV>}
           {b.approved_by && <KV k="Approved by">{l.payerName(b.approved_by)}</KV>}
         </Section>
+        <NotesSection refx={ref} notes={b.notes ?? ''} locked={b.status === 'void'} />
         <Section title="Balance">
           <MoneyKV label="Invoice total" cents={bal.total_cents} />
           {bal.credits_cents > 0 && <MoneyKV label="Vendor credits" cents={-bal.credits_cents} />}
@@ -295,6 +298,36 @@ function History({ refx: ref }: { refx: EntryRef }) {
           {a.reason && <span className="small">Reason: {a.reason}</span>}
         </div>
       ))}
+    </Section>
+  )
+}
+
+/** Notes on a receipt or bill. They never change amounts, so they stay editable after posting (every change is audited). */
+function NotesSection({ refx, notes, locked }: { refx: EntryRef; notes: string; locked: boolean }) {
+  const app = useStore()
+  const [editing, setEditing] = useState(false)
+  const [text, setText] = useState(notes)
+  const [busy, setBusy] = useState(false)
+  if (!editing && !notes && locked) return null
+  const save = async () => {
+    setBusy(true)
+    const ok = await app.change(refx, { type: 'notes', notes: text.trim() }, 'Notes saved')
+    setBusy(false)
+    if (ok) setEditing(false)
+  }
+  return (
+    <Section title="Notes" footer={editing ? 'Notes don’t change any amounts. Every edit is kept in the activity log.' : undefined}
+      action={!editing && !locked ? <button className="btn link" onClick={() => { setText(notes); setEditing(true) }}>{notes ? 'Edit' : '+ Add'}</button> : undefined}>
+      {editing ? (
+        <div className="stack" style={{ padding: 12 }}>
+          <textarea value={text} autoFocus onChange={(ev) => setText(ev.target.value)} placeholder="e.g. Rent deducted for renovation work" />
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button className="btn primary" disabled={busy || text.trim() === notes} onClick={save}>Save</button>
+            <button className="btn" disabled={busy} onClick={() => setEditing(false)}>Cancel</button>
+          </div>
+        </div>
+      ) : notes ? <div style={{ padding: '10px 14px', whiteSpace: 'pre-wrap' }}>{notes}</div>
+        : <div className="small muted" style={{ padding: '10px 14px' }}>No notes.</div>}
     </Section>
   )
 }

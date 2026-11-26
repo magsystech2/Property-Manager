@@ -112,6 +112,8 @@ export interface Bill extends RecordBase {
   bill_date: Day
   due_date?: Day | null
   description: string
+  /** Free-text note; doesn't affect amounts and can be edited after posting. */
+  notes?: string
   total_cents: Cents
   tax_cents: Cents
   approved_by?: string | null
@@ -124,6 +126,8 @@ export interface Expense extends RecordBase {
   vendor_id: string
   expense_date: Day
   description: string
+  /** Free-text note; doesn't affect amounts and can be edited after posting. */
+  notes?: string
   total_cents: Cents
   tax_cents: Cents
   is_refund: boolean

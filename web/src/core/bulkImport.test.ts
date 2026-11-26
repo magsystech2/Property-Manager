@@ -97,4 +97,20 @@ describe('bulk upload', () => {
     const csv = ['date,project,vendor,amount,paid_by,reference', `2025-04-30,${p},Belinda,5000,LLC,row 3`, `2025-04-30,${p},Belinda,5000,LLC,row 4`].join('\n')
     expect(readImport(parseCSV(csv), l, me).rows.map((r) => r.duplicate)).toEqual([false, false])
   })
+
+  it('keeps a notes column (or review_note) separate from the description', () => {
+    const p = l.s.projects[0].nickname
+    const b = l.s.members[1]
+    const csv = [
+      'type,date,project,vendor,amount,description,paid_by,review_note',
+      `receipt,2025-05-01,${p},Rent received,-9600,Rent May-Jul 2025,LLC,Deducted for renovation work`,
+      `contribution,2026-05-01,,,5000,EMI money,${b.display_name},Given to Madhan`,
+    ].join('\n')
+    const { rows } = readImport(parseCSV(csv), l, me)
+    expect(rows[0].draft).toMatchObject({ description: 'Rent May-Jul 2025', notes: 'Deducted for renovation work' })
+    expect(rows[1].contribution?.notes).toBe('EMI money · Given to Madhan')
+    // An older file with Notes but no Description still fills the description.
+    const old = readImport(parseCSV(`date,project,vendor,amount,notes\n2025-05-01,${p},Lowes,10,Paint`), l, me).rows[0]
+    expect(old.draft).toMatchObject({ description: 'Paint' })
+  })
 })

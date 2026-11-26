@@ -253,7 +253,7 @@ export class AppStore {
     if (d.kind === 'receipt') {
       const payer = d.payer === 'me' ? this.me : d.payer === 'llc' ? null : d.payer
       const e: Expense = {
-        id: d.id, workspace_id: ws, project_id: d.project_id, vendor_id: vendorId, expense_date: d.date, description: d.description.trim(),
+        id: d.id, workspace_id: ws, project_id: d.project_id, vendor_id: vendorId, expense_date: d.date, description: d.description.trim(), notes: (d.notes ?? '').trim(),
         total_cents: total, tax_cents: taxCents, is_refund: d.is_refund, paid_by_user_id: payer, payment_method: d.payment_method,
         reference: d.reference.trim() || d.invoice_number.trim(), status: 'posted', client_id: d.id,
       }
@@ -262,7 +262,7 @@ export class AppStore {
     }
     const b: Bill = {
       id: d.id, workspace_id: ws, project_id: d.project_id, vendor_id: vendorId, commitment_id: d.commitment_id,
-      invoice_number: d.invoice_number.trim(), bill_date: d.date, due_date: d.due_date || null, description: d.description.trim(),
+      invoice_number: d.invoice_number.trim(), bill_date: d.date, due_date: d.due_date || null, description: d.description.trim(), notes: (d.notes ?? '').trim(),
       total_cents: total, tax_cents: taxCents, status: 'posted', client_id: d.id,
     }
     Rules.checkBill(b, allocations, this.ledger)

@@ -137,6 +137,7 @@ export function TransactionForm({ initial, initialFiles, link, onClose, note }: 
         <div className="form-grid">
           <Field label="Tax included"><AmountInput value={d.tax_text} onChange={(v) => set({ tax_text: v })} /></Field>
           <Field label="Description" className="full"><textarea value={d.description} placeholder="What was it for?" onChange={(e) => set({ description: e.target.value })} /></Field>
+          <Field label="Notes" className="full"><textarea value={d.notes ?? ''} placeholder="Optional. Anything else to remember; doesn’t change amounts." onChange={(e) => set({ notes: e.target.value })} /></Field>
         </div>
       </div>
 
