@@ -111,12 +111,12 @@ export class SupabaseBackend implements Backend {
   async postExpense(e: Expense, allocations: AllocationInput[]) {
     Rules.checkExpense(e, allocations)
     const record = pick(e, ['id', 'workspace_id', 'project_id', 'vendor_id', 'expense_date', 'description', 'total_cents', 'tax_cents',
-      'is_refund', 'paid_by_user_id', 'payment_method', 'reference', 'client_id'])
+      'is_refund', 'paid_by_user_id', 'payment_method', 'reference', 'notes', 'client_id'])
     await this.wrap(() => this.client.rpc('post_with_allocations', { p_table: 'expenses', p_record: record, p_allocations: allocations }))
   }
   async postBill(b: Bill, allocations: AllocationInput[]) {
     const record = pick(b, ['id', 'workspace_id', 'project_id', 'vendor_id', 'commitment_id', 'invoice_number', 'bill_date', 'due_date',
-      'description', 'total_cents', 'tax_cents', 'client_id'])
+      'description', 'notes', 'total_cents', 'tax_cents', 'client_id'])
     await this.wrap(() => this.client.rpc('post_with_allocations', { p_table: 'bills', p_record: record, p_allocations: allocations }))
   }
 
@@ -147,7 +147,8 @@ export class SupabaseBackend implements Backend {
 
   async change(ref: EntryRef, c: StatusChange) {
     const table = kindTable[ref.kind]
-    const update = c.type === 'void' ? { status: 'void', void_reason: c.reason }
+    const update = c.type === 'notes' ? { notes: c.notes }
+      : c.type === 'void' ? { status: 'void', void_reason: c.reason }
       : c.type === 'approve' ? { status: ref.kind === 'reimbursement' ? 'approved' : 'posted' }
         : { status: 'paid', paid_date: c.date, payment_method: c.method, reference: c.reference }
     const rows = await this.wrap(() => this.client.from(table).update(update).eq('id', ref.id).select('id'))

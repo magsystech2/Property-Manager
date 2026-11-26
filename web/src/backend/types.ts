@@ -18,6 +18,8 @@ export type StatusChange =
   | { type: 'approve' }
   | { type: 'markPaid'; date: Day; method: string; reference: string }
   | { type: 'void'; reason: string }
+  /** Notes never change amounts, so they can be edited on a posted record. */
+  | { type: 'notes'; notes: string }
 
 export type AllocationInput = Pick<Allocation, 'category_id' | 'amount_cents'>
 

@@ -23,6 +23,7 @@ export interface TransactionDraft {
   splits: SplitLine[]
   tax_text: string
   description: string
+  notes?: string
   updated_at: string
   error?: string | null
 }

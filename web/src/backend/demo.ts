@@ -173,7 +173,11 @@ export class DemoBackend implements Backend {
     }
     const row = list().find((r) => r.id === ref.id)
     if (!row) throw new LedgerError('Not found.')
-    if (c.type === 'void') {
+    if (c.type === 'notes') {
+      if (row.status === 'void') throw new LedgerError('Voided records cannot be changed.')
+      row.notes = c.notes
+      this.audit(ref.kind, ref.id, 'update')
+    } else if (c.type === 'void') {
       Rules.checkVoid(ref, c.reason, l)
       if (row.status === 'void') throw new LedgerError('Already void.')
       Object.assign(row, { status: 'void', void_reason: c.reason, voided_by: me, voided_at: now })

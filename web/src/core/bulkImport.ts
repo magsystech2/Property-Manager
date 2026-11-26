@@ -7,7 +7,7 @@ import { newDraft, type TransactionDraft } from '../drafts'
 
 export const importColumns = [
   'type', 'date', 'project', 'vendor', 'category', 'amount', 'tax', 'description',
-  'paid_by', 'payment_method', 'reference', 'invoice_number', 'due_date',
+  'paid_by', 'payment_method', 'reference', 'invoice_number', 'due_date', 'notes',
 ] as const
 
 /** What each column means. Shown on the page and in the template's notes file. */
@@ -25,6 +25,7 @@ export const columnHelp: [string, string][] = [
   ['reference', 'Optional. Check #, confirmation #, last 4 of card.'],
   ['invoice_number', 'Bills: the vendor’s invoice number.'],
   ['due_date', 'Bills: when it’s due. Blank means no due date.'],
+  ['notes', 'Optional. Any note to keep with the record, e.g. “rent deducted for renovation work”. Doesn’t change amounts.'],
 ]
 
 const q = (v: string) => (/[",\n\r]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v)
@@ -35,8 +36,8 @@ export function templateCSV(l: Ledger): string {
   const cat = (name: string) => l.activeCategories.find((c) => c.name.toLowerCase() === name.toLowerCase())?.name ?? l.activeCategories[0]?.name ?? name
   const today = Days.today
   const rows = [
-    ['receipt', Days.adding(-2, today), project, 'Home Depot', cat('Materials'), '186.40', '12.90', 'Drywall screws and joint compound', '', 'card', '4421', '', ''],
-    ['bill', Days.adding(-1, today), project, 'ABC Plumbing', cat('Plumbing'), '4500.00', '', 'Rough-in plumbing', 'LLC', '', '', 'ABC-1010', Days.adding(29, today)],
+    ['receipt', Days.adding(-2, today), project, 'Home Depot', cat('Materials'), '186.40', '12.90', 'Drywall screws and joint compound', '', 'card', '4421', '', '', ''],
+    ['bill', Days.adding(-1, today), project, 'ABC Plumbing', cat('Plumbing'), '4500.00', '', 'Rough-in plumbing', 'LLC', '', '', 'ABC-1010', Days.adding(29, today), 'Per contract, 50% at rough-in'],
   ]
   return '﻿' + [importColumns.join(','), ...rows.map((r) => r.map(q).join(','))].join('\r\n') + '\r\n'
 }
@@ -112,7 +113,7 @@ const headerKey = (h: string) => norm(h).replace(/[^a-z0-9]+/g, '_').replace(/^_
 const aliases: Record<string, string> = {
   kind: 'type', total: 'amount', total_amount: 'amount', amount_usd: 'amount', property: 'project', supplier: 'vendor',
   payee: 'vendor', paid_by_partner: 'paid_by', payer: 'paid_by', method: 'payment_method', invoice: 'invoice_number',
-  invoice_no: 'invoice_number', due: 'due_date', notes: 'description', memo: 'description',
+  invoice_no: 'invoice_number', due: 'due_date', memo: 'description', note: 'notes', review_note: 'notes', comments: 'notes', comment: 'notes',
 }
 
 /** Turns the parsed file into checked rows. Nothing is saved here. */
@@ -170,7 +171,9 @@ export function readImport(table: string[][], l: Ledger, me: string | null): { r
         if (c.archived) warnings.push(`Category “${c.name}” is hidden.`)
       }
     }
-    d.description = v.description ?? ''
+    // An older file with only a Notes column (no Description) keeps using it as the description.
+    if (v.description === undefined && v.notes) d.description = v.notes
+    else { d.description = v.description ?? ''; d.notes = v.notes ?? '' }
     d.reference = v.reference ?? ''
 
     if (kind === 'receipt') {
@@ -257,7 +260,7 @@ function readContribution(v: Record<string, string>, i: number, l: Ledger, me: s
   }
   const contribution: ImportContribution | null = errors.length ? null : {
     id: uuid(), partner_user_id: partner!, project_id, amount_cents: amount!, contribution_date: date!,
-    payment_method, reference: v.reference ?? '', notes: v.description ?? '',
+    payment_method, reference: v.reference ?? '', notes: [v.description, v.notes].filter(Boolean).join(' · '),
   }
   return { line: i + 2, values: v, draft: null, errors, warnings, duplicate, contribution }
 }
