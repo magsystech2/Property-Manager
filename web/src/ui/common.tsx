@@ -377,7 +377,7 @@ export function StatStrip({ items }: { items: StripItem[] }) {
 // ---------------------------------------------------------------------------
 export type EditKind = 'text' | 'money' | 'percent' | 'date' | 'select'
 
-export function EditCell({ value, kind = 'text', display, onSave, options, className, style, title = 'Click to edit', disabled }: {
+export function EditCell({ value, kind = 'text', display, onSave, options, className, style, title = 'Click to edit', disabled, as: Tag = 'td' }: {
   value: string | number | null
   kind?: EditKind
   display?: ReactNode
@@ -388,6 +388,8 @@ export function EditCell({ value, kind = 'text', display, onSave, options, class
   style?: React.CSSProperties
   title?: string
   disabled?: boolean
+  /** td in tables (default); span inside a key/value row. */
+  as?: 'td' | 'span'
 }) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState('')
@@ -424,17 +426,17 @@ export function EditCell({ value, kind = 'text', display, onSave, options, class
   if (editing) {
     const common = { ref, className: 'edit-input', value: draft, disabled: busy, onKeyDown: keys, onBlur: () => void commit(), onClick: (e: React.MouseEvent) => e.stopPropagation() }
     return (
-      <td className={`${className ?? ''} editing`} style={style}>
+      <Tag className={`${className ?? ''} editing`} style={style}>
         {kind === 'select'
           ? <select {...common} onChange={(e) => setDraft(e.target.value)}>{(options ?? []).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select>
           : <input {...common} type={kind === 'date' ? 'date' : 'text'} inputMode={kind === 'money' || kind === 'percent' ? 'decimal' : undefined} onChange={(e) => setDraft(e.target.value)} />}
-      </td>
+      </Tag>
     )
   }
   return (
-    <td className={`${className ?? ''} ${disabled ? '' : 'editable'}`} style={style} title={disabled ? undefined : title} tabIndex={disabled ? undefined : 0}
+    <Tag className={`${className ?? ''} ${disabled ? '' : 'editable'}`} style={style} title={disabled ? undefined : title} tabIndex={disabled ? undefined : 0}
       onClick={start} onKeyDown={(e) => { if (!disabled && (e.key === 'Enter' || e.key === ' ')) start(e) }}>
       {display ?? toText(value)}
-    </td>
+    </Tag>
   )
 }

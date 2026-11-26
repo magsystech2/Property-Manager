@@ -1,11 +1,12 @@
 import { useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useStore } from '../store'
-import { Days } from '../core/money'
+import { Days, Money } from '../core/money'
 import { kindLabel, methodLabel, paymentKindLabel, type Allocation, type EntryKind, type EntryRef } from '../core/models'
 import { newDraft } from '../drafts'
+import type { CorrectionPatch } from '../core/correction'
 import { uuid } from '../core/money'
-import { AttachmentRow, EntryList, EntryRow, Icon, KV, MoneyKV, MoneyText, PageHead, Section, StatusBadge, recordPath } from '../ui/common'
+import { AttachmentRow, EditCell, EntryList, EntryRow, Icon, KV, MoneyKV, MoneyText, PageHead, Section, StatusBadge, recordPath } from '../ui/common'
 
 export function EntryDetailPage() {
   const { kind = '', id = '' } = useParams()
@@ -81,8 +82,21 @@ function Splits({ allocations }: { allocations: Allocation[] }) {
 
 function Details({ refx: ref }: { refx: EntryRef }) {
   const app = useStore()
+  const nav = useNavigate()
   const l = app.ledger
   const s = l.s
+  // Receipts and bills: values are click-to-edit. A change voids this one and posts a corrected copy (see store.correct).
+  const rec = l.record(ref)
+  const canFix = (ref.kind === 'expense' || ref.kind === 'bill') && rec?.status !== 'void' && !app.correctionBlocker(ref)
+  const fix = async (patch: CorrectionPatch) => { const r = await app.correct(ref, patch); if (r) nav(recordPath(r), { replace: true }); return !!r }
+  const ed = (kind: 'text' | 'money' | 'date' | 'select', value: string | number | null, display: React.ReactNode, patch: (v: string | number | null) => CorrectionPatch | null, options?: [string, string][]) =>
+    canFix ? <EditCell as="span" kind={kind} value={value} display={display} options={options} title="Click to correct: the original is voided and a fixed copy posted"
+      onSave={(v) => { const p = patch(v); return p ? fix(p) : false }} /> : display
+  const vendorOpts = (): [string, string][] => [...s.vendors].sort((a, b) => a.name.localeCompare(b.name)).map((v) => [v.id, v.name])
+  const projectOpts = (): [string, string][] => s.projects.map((p) => [p.id, p.nickname])
+  const payerOpts = (): [string, string][] => [['', 'LLC account'], ...s.members.map((m): [string, string] => [m.user_id, m.display_name])]
+  const fixFooter = canFix ? 'Click any value to correct it. The original is voided with a note saying what changed, and a fixed copy is posted with the same documents.'
+    : (ref.kind === 'expense' || ref.kind === 'bill') && rec?.status !== 'void' ? app.correctionBlocker(ref) ?? undefined : undefined
   const projectRow = (pid?: string | null) => pid ? <KV k="Project" to={`/projects/${pid}`}>{l.project(pid)?.nickname ?? '-'}</KV> : null
   const vendorRow = (vid?: string | null) => vid ? <KV k="Vendor" to={`/vendors/${vid}`}>{l.vendor(vid)?.name ?? '-'}</KV> : null
   const voidNote = (r: { status: string; void_reason?: string | null; voided_by?: string | null }) =>
@@ -94,12 +108,17 @@ function Details({ refx: ref }: { refx: EntryRef }) {
       if (!e) return null
       return <>
         {voidNote(e)}
-        <Section footer={e.paid_by_user_id && e.status !== 'void' ? `Paid personally: counted once as a project cost, and added to what the LLC owes ${l.payerName(e.paid_by_user_id)}.` : undefined}>
-          {projectRow(e.project_id)}{vendorRow(e.vendor_id)}
-          <KV k="Date">{Days.display(e.expense_date)}</KV>
-          {e.description && <KV k="Description">{e.description}</KV>}
+        <Section footer={[e.paid_by_user_id && e.status !== 'void' ? `Paid personally: counted once as a project cost, and added to what the LLC owes ${l.payerName(e.paid_by_user_id)}.` : '', fixFooter ?? ''].filter(Boolean).join(' ') || undefined}>
+          {canFix ? <>
+            <KV k="Amount">{ed('money', e.total_cents, Money.format(e.total_cents), (v) => (Number(v) > 0 ? { total_cents: Number(v) } : null))}</KV>
+            <KV k="Project">{ed('select', e.project_id, l.project(e.project_id)?.nickname ?? '-', (v) => ({ project_id: String(v) }), projectOpts())}</KV>
+            <KV k="Vendor">{ed('select', e.vendor_id, l.vendor(e.vendor_id)?.name ?? '-', (v) => ({ vendor_id: String(v) }), vendorOpts())}</KV>
+            <CategoryKV allocations={l.allocationsForExpense(e.id)} ed={ed} />
+          </> : <>{projectRow(e.project_id)}{vendorRow(e.vendor_id)}</>}
+          <KV k="Date">{ed('date', e.expense_date, Days.display(e.expense_date), (v) => ({ expense_date: String(v) }))}</KV>
+          {(e.description || canFix) && <KV k="Description">{ed('text', e.description, e.description || '-', (v) => ({ description: String(v ?? '') }))}</KV>}
           {e.is_refund && <KV k="Type">Refund from the vendor (reduces project cost)</KV>}
-          <KV k="Paid by">{l.payerName(e.paid_by_user_id)}</KV>
+          <KV k="Paid by">{ed('select', e.paid_by_user_id ?? '', l.payerName(e.paid_by_user_id), (v) => ({ paid_by_user_id: v ? String(v) : null }), payerOpts())}</KV>
           <KV k="Method">{methodLabel(e.payment_method)}</KV>
           {e.reference && <KV k="Reference">{e.reference}</KV>}
           {e.tax_cents > 0 && <MoneyKV label="Tax (included)" cents={e.tax_cents} />}
@@ -115,12 +134,20 @@ function Details({ refx: ref }: { refx: EntryRef }) {
       const c = b.commitment_id ? s.commitments.find((x) => x.id === b.commitment_id) : undefined
       return <>
         {voidNote(b)}
-        <Section>
-          {projectRow(b.project_id)}{vendorRow(b.vendor_id)}
-          {b.invoice_number && <KV k="Invoice #">{b.invoice_number}</KV>}
-          <KV k="Bill date">{Days.display(b.bill_date)}</KV>
-          <KV k="Due">{Days.display(b.due_date)}</KV>
-          {b.description && <KV k="Description">{b.description}</KV>}
+        <Section footer={fixFooter}>
+          {canFix && !b.commitment_id ? <>
+            <KV k="Amount">{ed('money', b.total_cents, Money.format(b.total_cents), (v) => (Number(v) > 0 ? { total_cents: Number(v) } : null))}</KV>
+            <KV k="Project">{ed('select', b.project_id, l.project(b.project_id)?.nickname ?? '-', (v) => ({ project_id: String(v) }), projectOpts())}</KV>
+            <KV k="Vendor">{ed('select', b.vendor_id, l.vendor(b.vendor_id)?.name ?? '-', (v) => ({ vendor_id: String(v) }), vendorOpts())}</KV>
+          </> : <>
+            {canFix && <KV k="Amount">{ed('money', b.total_cents, Money.format(b.total_cents), (v) => (Number(v) > 0 ? { total_cents: Number(v) } : null))}</KV>}
+            {projectRow(b.project_id)}{vendorRow(b.vendor_id)}
+          </>}
+          {canFix && <CategoryKV allocations={l.allocationsForBill(b.id)} ed={ed} />}
+          {(b.invoice_number || canFix) && <KV k="Invoice #">{ed('text', b.invoice_number, b.invoice_number || '-', (v) => ({ invoice_number: String(v ?? '').trim() }))}</KV>}
+          <KV k="Bill date">{ed('date', b.bill_date, Days.display(b.bill_date), (v) => ({ bill_date: String(v) }))}</KV>
+          <KV k="Due">{ed('date', b.due_date ?? '', Days.display(b.due_date), (v) => ({ due_date: v ? String(v) : null }))}</KV>
+          {(b.description || canFix) && <KV k="Description">{ed('text', b.description, b.description || '-', (v) => ({ description: String(v ?? '') }))}</KV>}
           {c && <KV k="Against contract" to={recordPath({ kind: 'commitment', id: c.id })}>{c.description || 'Contract'}</KV>}
           {b.approved_by && <KV k="Approved by">{l.payerName(b.approved_by)}</KV>}
         </Section>
@@ -331,4 +358,15 @@ function NotesSection({ refx, notes, locked }: { refx: EntryRef; notes: string; 
         : <div className="small muted" style={{ padding: '10px 14px' }}>No notes.</div>}
     </Section>
   )
+}
+
+/** Category row for a receipt or bill: editable when it's in one category; a split shows "Split" (change it with Void and enter again). */
+function CategoryKV({ allocations, ed }: { allocations: Allocation[]; ed: (kind: 'select', value: string, display: React.ReactNode, patch: (v: string | number | null) => CorrectionPatch | null, options: [string, string][]) => React.ReactNode }) {
+  const app = useStore()
+  const l = app.ledger
+  if (allocations.length > 1) return <KV k="Category">Split across {allocations.length} (below)</KV>
+  const cid = allocations[0]?.category_id ?? ''
+  const opts: [string, string][] = l.activeCategories.map((c) => [c.id, c.name])
+  if (cid && !opts.some(([k]) => k === cid)) opts.unshift([cid, l.category(cid)?.name ?? 'Category'])
+  return <KV k="Category">{ed('select', cid, l.category(cid)?.name ?? 'None', (v) => (v ? { category_id: String(v) } : null), opts)}</KV>
 }
