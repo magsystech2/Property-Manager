@@ -61,7 +61,7 @@ export function ReportForm({ refx, error, onClose }: { refx?: EntryRef | null; e
         )}
         <Field label="What kind of problem?">
           <select value={category} onChange={(e) => setCategory(e.target.value as IssueCategory)}>
-            {(Object.keys(issueCategoryLabel) as IssueCategory[]).map((c) => <option key={c} value={c}>{issueCategoryLabel[c]}</option>)}
+            {(Object.keys(issueCategoryLabel) as IssueCategory[]).filter((c) => c !== 'needs_review').map((c) => <option key={c} value={c}>{issueCategoryLabel[c]}</option>)}
           </select>
         </Field>
         <Field label="What’s wrong? (required)">
@@ -91,6 +91,36 @@ export function ReportForm({ refx, error, onClose }: { refx?: EntryRef | null; e
         <input ref={input} type="file" accept="image/*" hidden onChange={(e) => { pick(e.target.files?.[0]); e.target.value = '' }} />
       </div>
       <div className="note">Reports go to the shared Issues list for all partners. They never change any amounts. The page you were on and your browser are added to help whoever fixes it.</div>
+    </ModalShell>
+  )
+}
+
+/** Mark a record as needs review, with a note. It shows on the Needs review page until a partner marks it reviewed. */
+export function ReviewFlagForm({ refx, onClose }: { refx: EntryRef; onClose: () => void }) {
+  const app = useStore()
+  const entry = app.ledger.entry(refx)
+  const [note, setNote] = useState('')
+  const [busy, setBusy] = useState(false)
+  const save = async () => {
+    setBusy(true)
+    const ok = await app.reportIssue({ category: 'needs_review', note, ref: refx })
+    setBusy(false)
+    if (ok) onClose()
+  }
+  return (
+    <ModalShell title="Mark as needs review" onClose={onClose} onSave={save} saveTitle="Mark needs review" canSave={!!note.trim()} busy={busy}>
+      <div className="panel">
+        {entry && (
+          <div className="card list" style={{ padding: '8px 12px' }}>
+            <div className="small muted">{kindLabel[entry.ref.kind]}</div>
+            <div style={{ fontWeight: 600 }}>{entry.title} · {Money.format(entry.amount_cents)}</div>
+          </div>
+        )}
+        <Field label="What should be checked? (required)">
+          <textarea value={note} autoFocus onChange={(e) => setNote(e.target.value)} placeholder="e.g. Confirm the date with Prabhakar's bank statement" />
+        </Field>
+      </div>
+      <div className="note">It goes on the Needs review list for all partners. Nothing about the amounts changes.</div>
     </ModalShell>
   )
 }

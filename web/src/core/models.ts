@@ -365,11 +365,13 @@ export interface ScheduledDraw {
 export interface CashBalance { id: string; workspace_id: string; as_of: Day; amount_cents: Cents; note: string; created_by?: string | null; created_at?: string | null }
 
 /** A problem a partner flagged with a record or the app, collected in one list until someone resolves it. */
-export type IssueCategory = 'wrong_amount' | 'duplicate' | 'wrong_details' | 'missing' | 'app_error' | 'idea' | 'other'
+export type IssueCategory = 'wrong_amount' | 'duplicate' | 'wrong_details' | 'missing' | 'app_error' | 'idea' | 'other' | 'needs_review'
 export const issueCategoryLabel: Record<IssueCategory, string> = {
   wrong_amount: 'Wrong amount', duplicate: 'Duplicate', wrong_details: 'Wrong property, vendor or category', missing: 'Something missing',
-  app_error: 'Error or something didn’t work', idea: 'Idea or request', other: 'Other',
+  app_error: 'Error or something didn’t work', idea: 'Idea or request', other: 'Other', needs_review: 'Needs review',
 }
+/** A "needs review" flag on a record (kept in issue_reports, shown on its own page rather than under Issues). */
+export const isReviewFlag = (r: { category: string }) => r.category === 'needs_review'
 export interface IssueReport {
   id: string
   workspace_id: string

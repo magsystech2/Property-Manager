@@ -18,6 +18,7 @@ export function EntryDetailPage() {
   return (
     <div className="stack">
       <PageHead title={entry.title} sub={kindLabel[ref.kind]} back="/activity" />
+      <ReviewBanner refx={ref} />
       <div className="card" style={{ padding: 18, display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
         <span style={{ fontSize: 30, letterSpacing: '-0.01em' }}><MoneyText cents={entry.amount_cents} bold /></span>
         <StatusBadge status={entry.status} />
@@ -64,6 +65,7 @@ function Actions({ refx: ref }: { refx: EntryRef }) {
       )}
       {(ref.kind === 'expense' || ref.kind === 'bill') && <button className="btn" onClick={() => { const d = app.againDraft(ref); if (d) app.open({ type: 'transaction', draft: d }) }} title="A new one with the same vendor, project, amount and categories, dated today">Add again</button>}
       {(ref.kind === 'expense' || ref.kind === 'bill') && <button className="btn" onClick={() => app.open({ type: 'template', from: ref })} title="Save it as a template, optionally repeating">Save as template</button>}
+      {l.reviewFlagsFor(ref).length === 0 && <button className="btn" onClick={() => app.open({ type: 'report', ref, review: true })} title="Put it on the Needs review list, with a note on what to check">Needs review</button>}
       <button className="btn" onClick={() => app.open({ type: 'report', ref })} title="Flag a wrong amount, duplicate or other problem for the partners to fix"><Icon name="alert" />Report issue</button>
       {status !== 'void' && <button className="btn danger" onClick={() => app.open({ type: 'void', ref })}>Void…</button>}
     </div>
@@ -369,4 +371,30 @@ function CategoryKV({ allocations, ed }: { allocations: Allocation[]; ed: (kind:
   const opts: [string, string][] = l.activeCategories.map((c) => [c.id, c.name])
   if (cid && !opts.some(([k]) => k === cid)) opts.unshift([cid, l.category(cid)?.name ?? 'Category'])
   return <KV k="Category">{ed('select', cid, l.category(cid)?.name ?? 'None', (v) => (v ? { category_id: String(v) } : null), opts)}</KV>
+}
+
+/** Open "needs review" flags on this record, with a button to mark it reviewed. */
+function ReviewBanner({ refx }: { refx: EntryRef }) {
+  const app = useStore()
+  const l = app.ledger
+  const flags = l.reviewFlagsFor(refx)
+  const [open, setOpen] = useState(false)
+  const [note, setNote] = useState('')
+  if (flags.length === 0) return null
+  const done = async () => { for (const r of flags) if (!(await app.markReviewed(r, note))) return; setOpen(false); setNote('') }
+  return (
+    <div className="callout warn" style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-start' }}>
+      <div style={{ flex: 1, minWidth: 220 }}>
+        <div style={{ fontWeight: 650 }}>Needs review</div>
+        {flags.map((r) => <div key={r.id} className="small">{r.note} <span className="muted">· {r.created_by ? l.payerName(r.created_by) : 'Import'} · {r.created_at ? Days.display(r.created_at.slice(0, 10)) : ''}</span></div>)}
+      </div>
+      <button className="btn primary" onClick={() => setOpen(!open)}><Icon name="check" />Mark reviewed</button>
+      {open && (
+        <form className="row" style={{ width: '100%', gap: 8 }} onSubmit={(e) => { e.preventDefault(); void done() }}>
+          <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Optional: what you found" autoFocus style={{ flex: 1 }} />
+          <button className="btn primary">Done</button>
+        </form>
+      )}
+    </div>
+  )
 }

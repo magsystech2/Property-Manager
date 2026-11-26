@@ -79,6 +79,7 @@ export function EntryRow({ entry, showDue }: { entry: Entry; showDue?: boolean }
           </>
         ) : <MoneyText cents={entry.amount_cents} bold />}
         <div className="row" style={{ justifyContent: 'flex-end', gap: 6, marginTop: 3 }}>
+          {app.ledger.reviewFlagsFor(entry.ref).length > 0 && <span className="badge warning">Needs review</span>}
           {entry.attachment_count > 0 && <span className="muted" title={`${entry.attachment_count} document(s)`}><Icon name="clip" size={13} /></span>}
           <StatusBadge status={entry.status} />
         </div>

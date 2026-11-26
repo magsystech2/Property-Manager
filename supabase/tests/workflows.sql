@@ -325,6 +325,15 @@ select pg_temp.login(:'D');
 select pg_temp.eq('Outsider sees no reports', (select count(*) from public.issue_reports), 0);
 select pg_temp.login(:'B');
 
+\echo '== Needs review flags: an issue_reports category, always about a record'
+select pg_temp.login(:'B');
+insert into public.issue_reports (workspace_id, category, note, record_kind, record_id)
+select ws, 'needs_review', 'Check the date', 'expense', gen_random_uuid() from t;
+select pg_temp.eq('Review flag recorded', (select count(*) from public.issue_reports where category = 'needs_review' and status = 'open'), 1);
+select pg_temp.must_fail(format($q$insert into public.issue_reports (workspace_id, category, note) values (%L, 'needs_review', 'x')$q$, ws), 'check') from t;
+update public.issue_reports set status = 'resolved', resolution = 'Matches the bank' where category = 'needs_review';
+select pg_temp.eq('Marked reviewed', (select count(*) from public.issue_reports where category = 'needs_review' and resolved_by = :'B'), 1);
+
 \echo '== Partner loans: reference only, any partner records and edits; outsiders see nothing'
 select pg_temp.login(:'B');
 insert into public.partner_loans (id, workspace_id, partner_user_id, project_id, lender, principal_cents, rate_bps, start_date)

@@ -46,7 +46,7 @@ export type Modal =
   | { type: 'void'; ref: EntryRef }
   | { type: 'markPaid'; ref: EntryRef }
   | { type: 'attach'; target: AttachTarget }
-  | { type: 'report'; ref?: EntryRef | null; error?: string | null }
+  | { type: 'report'; ref?: EntryRef | null; error?: string | null; review?: boolean }
   | { type: 'loan'; loan?: PartnerLoan | null; projectId?: string | null }
 
 function safeName(name: string) {
@@ -403,11 +403,12 @@ export class AppStore {
         status: 'open', client_id: id,
       })
     })
-    if (ok) { this.showToast('Report sent. It’s in Issues for any partner to pick up.'); await this.reload(true) }
+    if (ok) { this.showToast(input.category === 'needs_review' ? 'Marked as needs review' : 'Report sent. It’s in Issues for any partner to pick up.'); await this.reload(true) }
     return ok
   }
   resolveIssue(r: IssueReport, resolution: string) { return this.simple((b) => b.setIssueStatus(r.id, 'resolved', resolution), 'Marked resolved') }
   reopenIssue(r: IssueReport) { return this.simple((b) => b.setIssueStatus(r.id, 'open'), 'Reopened') }
+  markReviewed(r: IssueReport, note: string) { return this.simple((b) => b.setIssueStatus(r.id, 'resolved', note.trim() || 'Reviewed'), 'Marked reviewed') }
 
   // --- Receipt inbox
   async addToInbox(files: File[], note: string): Promise<boolean> {
@@ -599,6 +600,14 @@ export class AppStore {
       catch { await this.run(() => b.setStatementStatus(m.statement_line_id, 'unmatched')) }
     }
     if (!ok) { await this.reload(true); return null }
+    // Open "needs review" flags follow the record to its corrected copy.
+    for (const f of this.ledger.reviewFlagsFor(ref)) {
+      const fid = uuid()
+      await this.run(async () => {
+        await b.addIssueReport({ ...f, id: fid, client_id: fid, record_id: newId, status: 'open', resolution: null, resolved_by: null, resolved_at: null })
+        await b.setIssueStatus(f.id, 'resolved', 'Corrected; the flag moved to the corrected copy')
+      })
+    }
     this.showToast('Corrected: the original is voided and a fixed copy is posted')
     await this.reload(true)
     return newRef
