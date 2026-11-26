@@ -6,7 +6,7 @@ import { Days, Money, type Cents } from '../core/money'
 import { dedupe } from '../core/ledger'
 import { isActiveProject, projectStatusLabel, projectTypeLabel, type EntryRef } from '../core/models'
 import { AttachmentRow, EntryList, Hero, Icon, StatStrip, KV, MoneyKV, MoneyText, PageHead, Section, Segmented, recordPath } from '../ui/common'
-import { ProjectRow, myStake } from './Home'
+import { StakeRow, myStake } from './Home'
 import { MoneyAtAGlance } from '../ui/Glance'
 import { ProjectForecast } from './Forecast'
 import { CostBasisCard, ProjectMaterials, ProjectSale } from './Sale'
@@ -22,10 +22,10 @@ export function ProjectsPage() {
         <button className="btn primary" onClick={() => app.open({ type: 'project' })}><Icon name="plus" />New project</button>
       </PageHead>
       <Section title="Active">
-        {ps.filter(isActiveProject).map((p) => <ProjectRow key={p.id} project={p} />)}
+        {ps.filter(isActiveProject).map((p) => <StakeRow key={p.id} project={p} stake={myStake(app.ledger, app.me ?? '', p)} />)}
         {ps.filter(isActiveProject).length === 0 && <div className="empty">No active projects yet.</div>}
       </Section>
-      {sold.length > 0 && <Section title="Sold">{sold.map((p) => <ProjectRow key={p.id} project={p} />)}</Section>}
+      {sold.length > 0 && <Section title="Sold">{sold.map((p) => <StakeRow key={p.id} project={p} stake={myStake(app.ledger, app.me ?? '', p)} />)}</Section>}
       <Section>
         <Link className="item" to="/vendors"><Icon name="store" /><span className="grow">Vendors and contractors</span><Icon name="chevron" /></Link>
       </Section>

@@ -152,7 +152,7 @@ export function HomePage() {
   )
 }
 
-function StakeRow({ project: p, stake: s }: { project: Project; stake: ReturnType<typeof myStake> }) {
+export function StakeRow({ project: p, stake: s }: { project: Project; stake: ReturnType<typeof myStake> }) {
   const app = useStore()
   const t = app.ledger.totals(p.id)
   const pct = t.budget_cents > 0 ? Math.min(100, (t.projected_cents / t.budget_cents) * 100) : 0
@@ -209,30 +209,6 @@ function LLCOverview() {
         {h.needs_review.length > 0 && <Section title="Waiting on review or payment"><EntryList entries={h.needs_review} /></Section>}
       </div>
     </details>
-  )
-}
-
-export function ProjectRow({ project }: { project: Project }) {
-  const app = useStore()
-  const t = app.ledger.totals(project.id)
-  const pct = t.budget_cents > 0 ? Math.min(100, (t.projected_cents / t.budget_cents) * 100) : 0
-  return (
-    <Link className="item" to={`/projects/${project.id}`} style={{ alignItems: 'stretch' }}>
-      <div className="grow" style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-        <div className="row">
-          <span className="title">{project.nickname}</span>
-          <span className="spacer" />
-          <span className="small muted">{projectTypeLabel(project)} · {projectStatusLabel(project)}</span>
-        </div>
-        {project.address && <div className="subtitle">{project.address}</div>}
-        {t.budget_cents > 0 && <div className={`progress ${t.remaining_cents < 0 ? 'over' : ''}`}><div style={{ width: `${pct}%` }} /></div>}
-        <div className="row small">
-          <span className="num">Projected {Money.format(t.projected_cents, false)} of {Money.format(t.budget_cents, false)} budget</span>
-          <span className="spacer" />
-          {t.remaining_cents < 0 && <span className="bad bold row" style={{ gap: 4 }}><Icon name="alert" size={13} />Over by {Money.format(-t.remaining_cents, false)}</span>}
-        </div>
-      </div>
-    </Link>
   )
 }
 
