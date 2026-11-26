@@ -171,6 +171,7 @@ final class SupabaseBackend: LedgerBackend {
     private struct StatusUpdate: Encodable { let status: String }
     private struct PaidUpdate: Encodable { let status = "paid"; let paidDate: String; let paymentMethod: String; let reference: String }
     private struct IdRow: Decodable { let id: UUID }
+    private struct NotesUpdate: Encodable { let notes: String }
 
     func change(_ ref: EntryRef, _ change: StatusChange) async throws {
         try await wrap {
@@ -185,6 +186,9 @@ final class SupabaseBackend: LedgerBackend {
             case .markPaid(let date, let method, let reference):
                 updated = try await q.update(PaidUpdate(paidDate: date, paymentMethod: method, reference: reference))
                     .eq("id", value: ref.id.uuidString).select("id").execute().value
+            case .notes(let text):
+                guard ref.kind == .expense || ref.kind == .bill else { throw BackendError.server("Only receipts and bills have notes.") }
+                updated = try await q.update(NotesUpdate(notes: text)).eq("id", value: ref.id.uuidString).select("id").execute().value
             }
             if updated.isEmpty { throw BackendError.server("You don't have permission to change this record.") }
         }

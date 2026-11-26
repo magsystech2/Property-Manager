@@ -17,6 +17,7 @@ enum StatusChange {
     case approve                                 // bill / change order -> posted, reimbursement -> approved
     case markPaid(date: Day, method: String, reference: String)   // reimbursement -> paid
     case void(reason: String)
+    case notes(String)                           // expense / bill note (migration 07); allowed after posting
 }
 
 /// Inbox, statements, review, cash plan, profit split, materials and templates (migrations 05 and 06).

@@ -21,6 +21,7 @@ struct PartnersView: View {
                     NavigationLink(value: Route.partner(b.member.userId)) { PartnerCard(balance: b) }
                 }
             }
+            PoolSection()
             Section {
                 Button { app.sheet = .reimbursement(partnerId: nil) } label: { Label("Reimburse a partner", systemImage: "arrow.uturn.backward.circle").frame(minHeight: 44) }
                 Button { app.sheet = .contribution(projectId: nil) } label: { Label("Add contribution", systemImage: "building.columns").frame(minHeight: 44) }
@@ -43,6 +44,68 @@ struct PartnersView: View {
                 NavigationLink(value: Route.settings) { Label("Settings", systemImage: "gearshape") }
             }
         }
+    }
+}
+
+/// Shared pot: what each partner put in (lump sums + personal payments), total spent, and each one against their share.
+/// Same numbers as the web app's "Who put in what".
+struct PoolSection: View {
+    @Environment(AppModel.self) private var app
+    @State private var projectId: UUID?
+
+    var body: some View {
+        let l = app.ledger
+        let s = l.poolSummary(project: projectId)
+        let basis = switch s.shareSource { case .equal: "an equal share"; case .project: "this project's split"; case .default: "the default split" }
+        Section {
+            Picker("Project", selection: $projectId) {
+                Text("All projects").tag(UUID?.none)
+                ForEach(l.s.projects.sorted { $0.nickname < $1.nickname }) { p in Text(p.nickname).tag(UUID?.some(p.id)) }
+            }
+            LabeledMoney(label: "Total spent", cents: s.totalSpentCents, bold: true)
+            LabeledMoney(label: "Paid from the LLC account", cents: s.paidByLLCCents)
+            LabeledMoney(label: "Paid personally by partners", cents: s.paidPersonallyCents)
+            LabeledMoney(label: "Contributed to the LLC account", cents: s.contributedCents)
+            if s.proceedsCents != 0 { LabeledMoney(label: "Sale proceeds in", cents: s.proceedsCents) }
+            if s.reimbursedCents != 0 { LabeledMoney(label: "Reimbursed to partners", cents: -s.reimbursedCents) }
+            if s.distributedCents != 0 { LabeledMoney(label: "Distributed to partners", cents: -s.distributedCents) }
+            LabeledMoney(label: "Left in the LLC account", cents: s.potBalanceCents, bold: true)
+            if s.potBalanceCents < 0 {
+                Label("The LLC paid more than was put in. Add the missing contribution, or check whether a partner really made that payment.",
+                      systemImage: "exclamationmark.triangle").font(.footnote).foregroundStyle(.orange)
+            }
+            ForEach(s.partners) { p in PoolPartnerRow(line: p) }
+        } header: {
+            Text("Who put in what")
+        } footer: {
+            Text("Put in = contributions to the LLC account + paid personally − reimbursed. Each partner is compared with \(basis) of the total spent. Loans aren't anyone's money in, so they're left out."
+                 + (projectId != nil ? " Reimbursements aren't tied to a project, so they only count under All projects." : ""))
+        }
+    }
+}
+
+struct PoolPartnerRow: View {
+    let line: PartnerShareLine
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(line.member.displayName).font(.headline)
+                if line.shareBps > 0 {
+                    Text("\(line.shareBps / 100)\(line.shareBps % 100 == 0 ? "" : String(format: ".%02d", line.shareBps % 100))%")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                Spacer()
+                Text((line.overShareCents > 0 ? "+" : "") + Money.format(line.overShareCents))
+                    .font(.subheadline.monospacedDigit().weight(.bold))
+                    .foregroundStyle(line.overShareCents < 0 ? .red : line.overShareCents > 0 ? .green : .primary)
+            }
+            Text("Put in \(Money.format(line.putInCents)) · Share of spending \(Money.format(line.shareOfSpendingCents))")
+                .font(.caption.monospacedDigit())
+            Text("Contributed \(Money.format(line.contributedCents)) · Paid personally \(Money.format(line.paidPersonallyCents)) · Reimbursed \(Money.format(line.reimbursedCents))")
+                .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+        }
+        .padding(.vertical, 2)
+        .accessibilityElement(children: .combine)
     }
 }
 

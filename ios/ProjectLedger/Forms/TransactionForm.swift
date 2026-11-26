@@ -196,6 +196,7 @@ struct TransactionForm: View {
             Section {
                 AmountField(label: "Tax included", text: $draft.taxText)
                 TextField("Description (what was it for?)", text: $draft.description, axis: .vertical).frame(minHeight: 44)
+                TextField("Notes (optional, can be edited later)", text: $draft.notesText, axis: .vertical).frame(minHeight: 44)
             }
 
             Section {

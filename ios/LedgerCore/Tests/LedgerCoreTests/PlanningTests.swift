@@ -212,4 +212,42 @@ final class PlanningTests: XCTestCase {
         XCTAssertEqual(s.materials.first { $0.name == "LVP flooring" }?.leftValueCents, 6 * 5_899)
         XCTAssertEqual(s.entryTemplates.filter { $0.repeat != "none" }.count, 2)
     }
+
+    // MARK: Pooled money (web: settlement.test.ts "pooled money")
+
+    func testPoolSummary() {
+        var s = snap()
+        let o = oak(s).id
+        let (a, b, c) = (DemoData.partnerA, DemoData.partnerB, DemoData.partnerC)
+        s.expenses = []; s.bills = []; s.payments = []; s.allocations = []; s.reimbursements = []; s.reimbursementItems = []
+        s.contributions = []; s.proceeds = []; s.distributions = []; s.profitShares = []
+        let ws = s.workspace.id, v = s.vendors[0].id
+        func exp(_ cents: Cents, _ by: UUID?, refund: Bool = false, void: Bool = false) {
+            s.expenses.append(Expense(workspaceId: ws, projectId: o, vendorId: v, expenseDate: today, totalCents: cents, isRefund: refund,
+                                      paidByUserId: by, paymentMethod: "ach", status: void ? RecordStatus.void : RecordStatus.posted))
+        }
+        s.contributions.append(Contribution(workspaceId: ws, partnerUserId: a, projectId: o, amountCents: 60_000, contributionDate: today))
+        s.contributions.append(Contribution(workspaceId: ws, partnerUserId: b, projectId: nil, amountCents: 30_000, contributionDate: today))
+        exp(100_000, nil)
+        exp(10_000, nil, refund: true)
+        exp(30_000, c)
+        exp(5_000, b)
+        exp(999_999, a, void: true)
+        s.reimbursements.append(Reimbursement(workspaceId: ws, partnerUserId: c, amountCents: 10_000, requestDate: today, status: RecordStatus.paid))
+        let sum = ledger(s).poolSummary()
+        XCTAssertEqual(sum.totalSpentCents, 125_000)
+        XCTAssertEqual(sum.paidByLLCCents, 90_000)
+        XCTAssertEqual(sum.paidPersonallyCents, 35_000)
+        XCTAssertEqual(sum.potBalanceCents, 60_000 + 30_000 - 90_000 - 10_000)
+        XCTAssertEqual(sum.shareSource, .equal)
+        let by = Dictionary(uniqueKeysWithValues: sum.partners.map { ($0.member.userId, $0) })
+        XCTAssertEqual(by[a]?.putInCents, 60_000)
+        XCTAssertEqual(by[b]?.putInCents, 35_000)
+        XCTAssertEqual(by[c]?.putInCents, 20_000)
+        XCTAssertEqual(sum.partners.map(\.shareOfSpendingCents).sorted(), [41_666, 41_667, 41_667])
+        XCTAssertEqual(sum.partners.reduce(0) { $0 + $1.overShareCents }, sum.potBalanceCents)
+        let proj = ledger(s).poolSummary(project: o)
+        XCTAssertEqual(proj.contributedCents, 60_000)
+        XCTAssertEqual(proj.reimbursedCents, 0)
+    }
 }

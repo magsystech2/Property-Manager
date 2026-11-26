@@ -215,7 +215,7 @@ final class AppModel {
         switch d.kind {
         case .receipt:
             let payer: UUID? = switch d.payer { case .me: me; case .llc: nil; case .partner(let id): id }
-            let e = Expense(id: d.id, workspaceId: ws, projectId: pid, vendorId: vendorId, expenseDate: d.date, description: d.description,
+            let e = Expense(id: d.id, workspaceId: ws, projectId: pid, vendorId: vendorId, expenseDate: d.date, description: d.description, notes: d.trimmedNotes,
                             totalCents: total, taxCents: d.taxCents, isRefund: d.isRefund, paidByUserId: payer,
                             paymentMethod: d.paymentMethod, reference: d.reference.isEmpty ? d.invoiceNumber : d.reference, clientId: d.id)
             try Rules.checkExpense(e, allocations: allocations)
@@ -223,7 +223,7 @@ final class AppModel {
         case .bill:
             let b = Bill(id: d.id, workspaceId: ws, projectId: pid, vendorId: vendorId, commitmentId: d.commitmentId,
                          invoiceNumber: d.invoiceNumber.trimmingCharacters(in: .whitespaces), billDate: d.date, dueDate: d.dueDate,
-                         description: d.description, totalCents: total, taxCents: d.taxCents, clientId: d.id)
+                         description: d.description, notes: d.trimmedNotes, totalCents: total, taxCents: d.taxCents, clientId: d.id)
             try Rules.checkBill(b, allocations: allocations, in: ledger)
             return (b, allocations)
         }
