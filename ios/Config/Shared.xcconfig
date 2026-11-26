@@ -1,0 +1,10 @@
+// Live sync settings built into the app, so partners only sign in with email and password.
+// Put the real values in Config/Local.xcconfig (git-ignored, because this repository is public):
+//
+//   LEDGER_SUPABASE_HOST = abcdefgh.supabase.co
+//   LEDGER_SUPABASE_ANON_KEY = eyJ...
+//
+// Use the host only (no https://), since "//" starts a comment in this file. Run `xcodegen generate` after creating it.
+LEDGER_SUPABASE_HOST =
+LEDGER_SUPABASE_ANON_KEY =
+#include? "Local.xcconfig"

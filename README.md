@@ -59,7 +59,7 @@ Scanning with the camera is iPhone only; on the Mac, import a PDF or photo inste
    Don't run `seed.sql` on the hosted project. It's for local testing only.
 3. **Authentication → Providers → Email:** keep it on. For a three-person team you can turn off "Confirm email", or leave it on and have each partner confirm by email first.
 4. **Project Settings → API:** copy the Project URL and the `anon` `public` key. Then either:
-   - put them in `ios/ProjectLedger/App/AppConfig.swift` (`defaultSupabaseURL`, `defaultSupabaseAnonKey`) before building, so partners don't type anything, or
+   - create `ios/Config/Local.xcconfig` (git-ignored) with `LEDGER_SUPABASE_HOST = <project>.supabase.co` and `LEDGER_SUPABASE_ANON_KEY = <key>`, then run `xcodegen generate` and build. Partners then only see email and password, or
    - enter them in the app: Welcome → **Live sync settings**.
    The anon key is meant to ship in apps. Row-level security decides what each signed-in user can see.
 5. Optional, for smarter "Say it" reading: `supabase secrets set ANTHROPIC_API_KEY=…` and then `supabase functions deploy parse-expense`.

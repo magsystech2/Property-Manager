@@ -19,9 +19,15 @@ targets:
       - ProjectLedger
     # Info.plist keys that build settings can't express: open PDFs and photos from Mail, Files or Photos
     # ("Share" / "Open in Project Ledger"). They land in the receipt inbox.
+    configFiles:
+      Debug: Config/Shared.xcconfig
+      Release: Config/Shared.xcconfig
     info:
       path: ProjectLedger/Info.plist
       properties:
+        # Built-in live sync settings (Config/Local.xcconfig). Empty means partners enter them in the app.
+        LedgerSupabaseHost: $(LEDGER_SUPABASE_HOST)
+        LedgerSupabaseAnonKey: $(LEDGER_SUPABASE_ANON_KEY)
         CFBundleDocumentTypes:
           - CFBundleTypeName: PDF document
             CFBundleTypeRole: Viewer

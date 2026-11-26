@@ -36,8 +36,10 @@ struct WelcomeView: View {
                     .buttonStyle(.bordered)
                     .font(.headline)
 
-                    Button("Live sync settings") { showLiveSetup = true }
-                        .frame(minHeight: 44)
+                    if !AppConfig.isBuiltIn {
+                        Button("Live sync settings") { showLiveSetup = true }
+                            .frame(minHeight: 44)
+                    }
                 }
                 .padding(24)
             }
