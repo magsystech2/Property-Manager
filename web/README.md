@@ -106,4 +106,4 @@ The image build runs the tests first, so a broken version won't replace the runn
 
 - Supabase settings are read at runtime from `/config.js`, which the container writes from its environment. Settings saved in the browser override it.
 - Files go to the same private `attachments` bucket as the iPhone app and open with links that expire after an hour.
-- These features need migrations `…05`, `…06` and `…07` (notes on receipts and bills) in `supabase/migrations/`. Without them the app still loads; the new pages are just empty and notes aren't saved.
+- These features need migrations `…05`, `…06`, `…07` (notes on receipts and bills) and `…08` (issue reports) in `supabase/migrations/`. Without them the app still loads; the new pages are just empty, notes aren't saved and sending a report says the database needs updating.

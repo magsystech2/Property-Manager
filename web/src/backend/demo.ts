@@ -4,7 +4,7 @@ import { Ledger } from '../core/ledger'
 import { Rules, LedgerError } from '../core/rules'
 import { demoSnapshot, DemoIds } from '../core/demoData'
 import { Days } from '../core/money'
-import { emptySnapshot, type Snapshot, type EntryRef, type Attachment, type InboxItem, type StatementLine, type StatementMatch, type Claim, type ScheduledDraw, type CashBalance, type Material, type EntryTemplate } from '../core/models'
+import { emptySnapshot, type Snapshot, type EntryRef, type Attachment, type InboxItem, type StatementLine, type StatementMatch, type Claim, type ScheduledDraw, type CashBalance, type Material, type EntryTemplate, type IssueReport } from '../core/models'
 import type { Backend, NewRecord, StatusChange, AllocationInput } from './types'
 import { uuid } from '../core/money'
 
@@ -409,6 +409,24 @@ export class DemoBackend implements Backend {
   async deleteTemplate(id: string) {
     this.snapshot.entry_templates = this.snapshot.entry_templates.filter((x) => x.id !== id)
     this.audit('entry_templates', id, 'delete')
+    this.changed()
+  }
+
+  async addIssueReport(r: IssueReport) {
+    if (!r.note.trim()) throw new LedgerError('Say what’s wrong.')
+    if (this.snapshot.issue_reports.some((x) => x.id === r.id || (r.client_id && x.client_id === r.client_id))) return
+    this.snapshot.issue_reports.push({ ...r, status: 'open', resolution: null, resolved_by: null, resolved_at: null, created_by: this.actingAs, created_at: this.now() })
+    this.audit('issue_reports', r.id, 'insert')
+    this.changed()
+  }
+  async setIssueStatus(id: string, status: 'open' | 'resolved', resolution?: string | null) {
+    const i = this.snapshot.issue_reports.findIndex((x) => x.id === id)
+    if (i < 0) throw new LedgerError('Report not found.')
+    const cur = this.snapshot.issue_reports[i]
+    this.snapshot.issue_reports[i] = status === 'resolved'
+      ? { ...cur, status, resolution: resolution?.trim() || null, resolved_by: this.actingAs, resolved_at: this.now() }
+      : { ...cur, status, resolution: null, resolved_by: null, resolved_at: null }
+    this.audit('issue_reports', id, 'update')
     this.changed()
   }
 

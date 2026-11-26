@@ -63,6 +63,7 @@ function Actions({ refx: ref }: { refx: EntryRef }) {
       )}
       {(ref.kind === 'expense' || ref.kind === 'bill') && <button className="btn" onClick={() => { const d = app.againDraft(ref); if (d) app.open({ type: 'transaction', draft: d }) }} title="A new one with the same vendor, project, amount and categories, dated today">Add again</button>}
       {(ref.kind === 'expense' || ref.kind === 'bill') && <button className="btn" onClick={() => app.open({ type: 'template', from: ref })} title="Save it as a template, optionally repeating">Save as template</button>}
+      <button className="btn" onClick={() => app.open({ type: 'report', ref })} title="Flag a wrong amount, duplicate or other problem for the partners to fix"><Icon name="alert" />Report issue</button>
       {status !== 'void' && <button className="btn danger" onClick={() => app.open({ type: 'void', ref })}>Void…</button>}
     </div>
   )

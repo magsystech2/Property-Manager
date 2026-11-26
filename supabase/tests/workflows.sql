@@ -305,4 +305,24 @@ select pg_temp.eq('Outsider sees no templates', (select count(*) from public.ent
 select pg_temp.eq('Outsider sees no profit shares', (select count(*) from public.profit_shares), 0);
 select pg_temp.login(:'B');
 
+\echo '== Issue reports: any partner reports and resolves; reports are never edited or deleted'
+select pg_temp.login(:'B');
+insert into public.issue_reports (id, workspace_id, category, note, record_kind, record_id, error_text)
+select '80000000-0000-0000-0000-000000000001', ws, 'app_error', 'Void failed', 'expense', gen_random_uuid(), 'No connection to the server.' from t;
+select pg_temp.eq('Report made by the signed-in partner, open', (select (created_by = :'B' and status = 'open')::int from public.issue_reports), 1);
+select pg_temp.must_fail(format($q$insert into public.issue_reports (workspace_id, note) values (%L, '  ')$q$, ws), 'check') from t;
+select pg_temp.must_fail(format($q$insert into public.issue_reports (workspace_id, note, record_kind) values (%L, 'x', 'bill')$q$, ws), 'check') from t;
+select pg_temp.must_fail(format($q$insert into public.issue_reports (workspace_id, note, screenshot_path) values (%L, 'x', 'other-ws/a.png')$q$, ws), 'check') from t;
+select pg_temp.must_fail($q$update public.issue_reports set note = 'changed'$q$, 'can''t be edited');
+select pg_temp.login(:'A');
+update public.issue_reports set status = 'resolved', resolution = 'Voided on retry';
+select pg_temp.eq('Resolved by partner A', (select (resolved_by = :'A' and resolved_at is not null)::int from public.issue_reports), 1);
+update public.issue_reports set status = 'open';
+select pg_temp.eq('Reopen clears the resolution', (select (resolved_by is null and resolution is null)::int from public.issue_reports), 1);
+delete from public.issue_reports;
+select pg_temp.eq('Reports can''t be deleted', (select count(*) from public.issue_reports), 1);
+select pg_temp.login(:'D');
+select pg_temp.eq('Outsider sees no reports', (select count(*) from public.issue_reports), 0);
+select pg_temp.login(:'B');
+
 reset role;

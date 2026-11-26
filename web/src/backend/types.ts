@@ -1,6 +1,6 @@
 import type {
   Allocation, Bill, BillPayment, BudgetCategory, ChangeOrder, Commitment, Contribution, EntryRef, Expense, Invite, Member,
-  Project, ProjectBudget, Reimbursement, ReimbursementItem, SaleProceed, Snapshot, Vendor, Workspace, Attachment, InboxItem, StatementLine, StatementMatch, Claim, ScheduledDraw, CashBalance, Distribution, EntryTemplate, Material, } from '../core/models'
+  Project, ProjectBudget, Reimbursement, ReimbursementItem, SaleProceed, Snapshot, Vendor, Workspace, Attachment, InboxItem, StatementLine, StatementMatch, Claim, ScheduledDraw, CashBalance, Distribution, EntryTemplate, Material, IssueReport, } from '../core/models'
 import type { Day } from '../core/money'
 
 /** New records other than receipts and bills (those carry a category split). */
@@ -82,6 +82,10 @@ export interface Backend {
   deleteMaterial(id: string): Promise<void>
   saveTemplate(t: EntryTemplate): Promise<void>
   deleteTemplate(id: string): Promise<void>
+  // Issue reports (never change money; kept for the record)
+  addIssueReport(r: IssueReport): Promise<void>
+  /** Resolve (with an optional note of what was done) or reopen. */
+  setIssueStatus(id: string, status: 'open' | 'resolved', resolution?: string | null): Promise<void>
   fileURL(path: string): Promise<string>
 
   /** Calls back whenever shared data changes (other partners' edits). Returns an unsubscribe function. */

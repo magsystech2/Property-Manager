@@ -20,6 +20,7 @@ import { ReviewPage, MissingPage } from './pages/Review'
 import { CashPage } from './pages/Cash'
 import { RecurringPage, ReportsPage, dueTemplates } from './pages/Reports'
 import { ModalHost } from './forms/ModalHost'
+import { IssuesPage } from './pages/Issues'
 
 export default function App() {
   const app = useStore()
@@ -31,6 +32,7 @@ export default function App() {
       {app.error && (
         <div className="error-banner" role="alert">
           <Icon name="alert" /><span style={{ flex: 1 }}>{app.error}</span>
+          {app.phase === 'ready' && <button className="btn link" onClick={() => { const err = app.error; app.error = null; app.open({ type: 'report', error: err }) }}>Report</button>}
           <button className="btn link" onClick={() => { app.error = null; app.emit() }}>Dismiss</button>
         </div>
       )}
@@ -69,6 +71,7 @@ const addActions: { label: string; desc: string; icon: string; open: (projectId:
   { label: 'Add commitment', desc: 'A contract or agreed quote', icon: 'sign', open: (pid) => store.open({ type: 'commitment', projectId: pid }) },
   { label: 'Recurring cost', desc: 'Insurance, utilities, dumpster: due ones and templates', icon: 'repeat', open: () => {}, to: '/recurring' },
   { label: 'Bulk upload', desc: 'Many receipts and bills from a spreadsheet', icon: 'tray', open: () => {}, to: '/import' },
+  { label: 'Report an issue', desc: 'Something wrong with a record or the app', icon: 'alert', open: () => store.open({ type: 'report' }) },
 ]
 
 function AddMenu({ mobile, onClose }: { mobile?: boolean; onClose: () => void }) {
@@ -109,6 +112,7 @@ function Shell() {
   const inboxCount = app.ledger.s.inbox_items.filter((i) => i.status === 'new').length
   const unmatchedCount = app.ledger.s.statement_lines.filter((x) => x.status === 'unmatched').length
   const dueCount = dueTemplates(app.ledger.s.entry_templates, app.ledger.today).length
+  const issueCount = (app.ledger.s.issue_reports ?? []).filter((r) => r.status === 'open').length
   return (
     <div className="app">
       <aside className="sidebar">
@@ -128,6 +132,7 @@ function Shell() {
         <NavLink to="/vendors" className="nav-link"><Icon name="store" />Vendors</NavLink>
         <NavLink to="/import" className="nav-link"><Icon name="list" />Bulk upload</NavLink>
         <NavLink to="/export" className="nav-link"><Icon name="download" />Export CSV</NavLink>
+        <NavLink to="/issues" className="nav-link"><Icon name="alert" />Issues{issueCount ? <span className="nav-count">{issueCount}</span> : null}</NavLink>
         {app.draftList.length > 0 && <NavLink to="/drafts" className="nav-link"><Icon name="tray" />Drafts ({app.draftList.length})</NavLink>}
         <span className="spacer" />
         <NavLink to="/settings" className="nav-link"><Icon name="settings" />Settings</NavLink>
@@ -170,6 +175,7 @@ function Shell() {
             <Route path="/cash" element={<CashPage />} />
             <Route path="/reports" element={<ReportsPage />} />
             <Route path="/recurring" element={<RecurringPage />} />
+            <Route path="/issues" element={<IssuesPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </main>
