@@ -217,3 +217,84 @@ public enum Settlements {
         return cal.date(from: tc).map { Days.string($0) } ?? day
     }
 }
+
+// MARK: - Pooled money: who put in what, what was spent, and each partner against their share
+// Same rules as the web app's poolSummary (web/src/core/settlement.ts).
+
+public struct PartnerShareLine: Identifiable, Sendable {
+    public var member: Member
+    public var id: UUID { member.userId }
+    /// Lump sums put into the LLC account (the pot).
+    public var contributedCents: Cents
+    /// Receipts and bill payments the partner paid from their own money.
+    public var paidPersonallyCents: Cents
+    /// Paid back to the partner by the LLC for personal payments. Only counted LLC-wide.
+    public var reimbursedCents: Cents
+    /// contributed + paid personally − reimbursed.
+    public var putInCents: Cents
+    public var shareBps: Int
+    /// Total spent × this partner's share.
+    public var shareOfSpendingCents: Cents
+    /// put in − share of spending. Positive: covered more than their share. Negative: owes the others.
+    public var overShareCents: Cents
+}
+
+public struct PoolSummary: Sendable {
+    /// Every receipt and bill payment, whoever paid it (refunds subtract).
+    public var totalSpentCents: Cents
+    public var paidByLLCCents: Cents
+    public var paidPersonallyCents: Cents
+    public var contributedCents: Cents
+    public var reimbursedCents: Cents
+    public var proceedsCents: Cents
+    public var distributedCents: Cents
+    /// What's left in the pot: contributions + sale proceeds − LLC payments − reimbursements − distributions.
+    public var potBalanceCents: Cents
+    public var shareSource: ShareSource
+    public var partners: [PartnerShareLine]
+}
+
+public extension Ledger {
+    /// The shared-pot view. Each partner's money in (contributions + personal payments − reimbursements) is compared with
+    /// their share of everything spent, using the profit split (project override, LLC default, else equal).
+    /// Loans aren't spending and aren't anyone's money in: only cash that left the pot or a partner's pocket counts.
+    func poolSummary(project pid: UUID? = nil) -> PoolSummary {
+        func inProject(_ p: UUID?) -> Bool { pid == nil || p == pid }
+        var personal: [UUID: Cents] = [:]
+        var llc: Cents = 0
+        for e in s.expenses where !e.isVoid && inProject(e.projectId) {
+            if let by = e.paidByUserId { personal[by, default: 0] += e.signedCents } else { llc += e.signedCents }
+        }
+        for p in s.payments where !p.isVoid && inProject(bill(p.billId)?.projectId) {
+            let v = p.kind == "payment" ? p.amountCents : p.kind == "refund" ? -p.amountCents : 0
+            if let by = p.paidByUserId { personal[by, default: 0] += v } else { llc += v }
+        }
+        var contributed: [UUID: Cents] = [:]
+        for c in s.contributions where !c.isVoid && inProject(c.projectId) { contributed[c.partnerUserId, default: 0] += c.amountCents }
+        var reimbursed: [UUID: Cents] = [:]
+        if pid == nil { for r in s.reimbursements where r.status == RecordStatus.paid { reimbursed[r.partnerUserId, default: 0] += r.amountCents } }
+        let proceeds = s.proceeds.filter { !$0.isVoid && inProject($0.projectId) }.reduce(0) { $0 + $1.amountCents }
+        let distributed = s.distributions.filter { !$0.isVoid && inProject($0.projectId) }.reduce(0) { $0 + $1.amountCents }
+
+        let paidPersonally = personal.values.reduce(0, +)
+        let total = llc + paidPersonally
+        let (shares, source) = profitShares(project: pid)
+        var ids = Set(shares.map(\.partnerUserId))
+        ids.formUnion(personal.keys); ids.formUnion(contributed.keys); ids.formUnion(reimbursed.keys)
+        let people = ids.map { uid in (uid: uid, bps: shares.first { $0.partnerUserId == uid }?.shareBps ?? 0) }
+            .sorted { payerName($0.uid).localizedCompare(payerName($1.uid)) == .orderedAscending }
+        // An equal split in basis points (33.34/33.33/33.33%) is off by dollars on big totals, so equal shares split exactly.
+        let parts = Settlements.allocate(total, bps: people.map { source == .equal ? ($0.bps > 0 ? 1 : 0) : $0.bps })
+        let partners = people.enumerated().map { i, p -> PartnerShareLine in
+            let m = member(p.uid) ?? Member(workspaceId: s.workspace.id, userId: p.uid, role: "partner", displayName: "Former partner")
+            let c = contributed[p.uid] ?? 0, pp = personal[p.uid] ?? 0, r = reimbursed[p.uid] ?? 0
+            return PartnerShareLine(member: m, contributedCents: c, paidPersonallyCents: pp, reimbursedCents: r, putInCents: c + pp - r,
+                                    shareBps: p.bps, shareOfSpendingCents: parts[i], overShareCents: c + pp - r - parts[i])
+        }
+        let contributedTotal = contributed.values.reduce(0, +), reimbursedTotal = reimbursed.values.reduce(0, +)
+        return PoolSummary(totalSpentCents: total, paidByLLCCents: llc, paidPersonallyCents: paidPersonally, contributedCents: contributedTotal,
+                           reimbursedCents: reimbursedTotal, proceedsCents: proceeds, distributedCents: distributed,
+                           potBalanceCents: contributedTotal + proceeds - llc - reimbursedTotal - distributed,
+                           shareSource: source, partners: partners)
+    }
+}

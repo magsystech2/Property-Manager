@@ -37,6 +37,11 @@ struct TransactionDraft: Codable, Identifiable, Hashable {
     var date: Day = Days.today
     var dueDate: Day?
     var description = ""
+    /// Optional so drafts saved before notes existed still load.
+    var notes: String?
+    var notesText: String { get { notes ?? "" } set { notes = newValue } }
+    /// What gets saved: nil when blank, so the server default ('') applies.
+    var trimmedNotes: String? { let t = (notes ?? "").trimmingCharacters(in: .whitespacesAndNewlines); return t.isEmpty ? nil : t }
     var totalText = ""
     var taxText = ""
     var invoiceNumber = ""

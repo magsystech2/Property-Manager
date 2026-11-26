@@ -223,6 +223,8 @@ public struct Bill: LedgerRecord {
     public var billDate: Day
     public var dueDate: Day?
     public var description: String
+    /// Free-text note (migration 07). Never changes amounts, so it can be edited after posting.
+    public var notes: String?
     public var totalCents: Cents
     public var taxCents: Cents
     public var status: String
@@ -235,13 +237,13 @@ public struct Bill: LedgerRecord {
     public var voidedAt: String?
     public var voidReason: String?
     public init(id: UUID = UUID(), workspaceId: UUID, projectId: UUID, vendorId: UUID, commitmentId: UUID? = nil,
-                invoiceNumber: String = "", billDate: Day, dueDate: Day? = nil, description: String = "",
+                invoiceNumber: String = "", billDate: Day, dueDate: Day? = nil, description: String = "", notes: String? = nil,
                 totalCents: Cents, taxCents: Cents = 0, status: String = RecordStatus.posted, clientId: UUID? = UUID(),
                 createdBy: UUID? = nil, createdAt: String? = nil) {
         self.id = id; self.workspaceId = workspaceId; self.projectId = projectId; self.vendorId = vendorId
         self.commitmentId = commitmentId; self.invoiceNumber = invoiceNumber; self.billDate = billDate; self.dueDate = dueDate
         self.description = description; self.totalCents = totalCents; self.taxCents = taxCents; self.status = status
-        self.clientId = clientId; self.createdBy = createdBy; self.createdAt = createdAt
+        self.notes = notes; self.clientId = clientId; self.createdBy = createdBy; self.createdAt = createdAt
     }
 }
 
@@ -253,6 +255,8 @@ public struct Expense: LedgerRecord {
     public var vendorId: UUID
     public var expenseDate: Day
     public var description: String
+    /// Free-text note (migration 07). Never changes amounts, so it can be edited after posting.
+    public var notes: String?
     public var totalCents: Cents
     public var taxCents: Cents
     public var isRefund: Bool
@@ -267,11 +271,11 @@ public struct Expense: LedgerRecord {
     public var voidedBy: UUID?
     public var voidedAt: String?
     public var voidReason: String?
-    public init(id: UUID = UUID(), workspaceId: UUID, projectId: UUID, vendorId: UUID, expenseDate: Day, description: String = "",
+    public init(id: UUID = UUID(), workspaceId: UUID, projectId: UUID, vendorId: UUID, expenseDate: Day, description: String = "", notes: String? = nil,
                 totalCents: Cents, taxCents: Cents = 0, isRefund: Bool = false, paidByUserId: UUID?, paymentMethod: String = "card",
                 reference: String = "", status: String = RecordStatus.posted, clientId: UUID? = UUID(), createdBy: UUID? = nil, createdAt: String? = nil) {
         self.id = id; self.workspaceId = workspaceId; self.projectId = projectId; self.vendorId = vendorId
-        self.expenseDate = expenseDate; self.description = description; self.totalCents = totalCents; self.taxCents = taxCents
+        self.expenseDate = expenseDate; self.description = description; self.notes = notes; self.totalCents = totalCents; self.taxCents = taxCents
         self.isRefund = isRefund; self.paidByUserId = paidByUserId; self.paymentMethod = paymentMethod; self.reference = reference
         self.status = status; self.clientId = clientId; self.createdBy = createdBy; self.createdAt = createdAt
     }

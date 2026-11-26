@@ -78,6 +78,7 @@ struct EntryDetailView: View {
                         Text("Paid personally: counted once as a project cost, and added to what the LLC owes \(l.payerName(e.paidByUserId)).")
                     }
                 }
+                NotesSection(ref: ref, notes: e.notes ?? "", locked: e.isVoid)
                 splits(l.allocations(expense: e.id))
             }
         case .bill:
@@ -94,6 +95,7 @@ struct EntryDetailView: View {
                         NavigationLink(value: EntryRef(.commitment, c.id)) { LabeledContent("Against contract", value: c.description) }
                     }
                 }
+                NotesSection(ref: ref, notes: b.notes ?? "", locked: b.isVoid)
                 Section("Balance") {
                     LabeledMoney(label: "Invoice total", cents: bal.totalCents)
                     if bal.creditsCents > 0 { LabeledMoney(label: "Vendor credits", cents: -bal.creditsCents) }
@@ -408,5 +410,53 @@ struct MarkPaidSheet: View {
             }
         }
         .presentationDetents([.medium])
+    }
+}
+
+
+/// Notes on a receipt or bill (migration 07). A note never changes money, so it can be edited after posting.
+/// Hidden on a void record that has no note.
+struct NotesSection: View {
+    @Environment(AppModel.self) private var app
+    let ref: EntryRef
+    let notes: String
+    let locked: Bool
+    @State private var editing = false
+    @State private var text = ""
+    @State private var saving = false
+
+    var body: some View {
+        if !(locked && notes.isEmpty) {
+            Section {
+                if editing {
+                    TextField("Add a note", text: $text, axis: .vertical).frame(minHeight: 60)
+                    HStack {
+                        Button("Cancel") { editing = false }.buttonStyle(.borderless)
+                        Spacer()
+                        Button("Save") {
+                            saving = true
+                            Task {
+                                let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
+                                if await app.change(ref, .notes(t), success: "Notes saved") { editing = false }
+                                saving = false
+                            }
+                        }
+                        .buttonStyle(.borderless).bold()
+                        .disabled(saving || text.trimmingCharacters(in: .whitespacesAndNewlines) == notes)
+                    }
+                } else if notes.isEmpty {
+                    Button { text = ""; editing = true } label: { Label("Add a note", systemImage: "square.and.pencil") }
+                } else {
+                    Text(notes).textSelection(.enabled)
+                    if !locked {
+                        Button { text = notes; editing = true } label: { Label("Edit note", systemImage: "square.and.pencil") }
+                    }
+                }
+            } header: {
+                Text("Notes")
+            } footer: {
+                if editing { Text("Every change to a note is recorded in the history.") }
+            }
+        }
     }
 }

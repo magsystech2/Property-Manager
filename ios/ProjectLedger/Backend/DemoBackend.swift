@@ -149,6 +149,17 @@ final class DemoBackend: LedgerBackend {
             try Rules.checkReimbursementPaid(paid, in: l)
             snapshot.reimbursements[i] = paid
             audit("reimbursements", r.id, "paid")
+        case .notes(let text):
+            switch ref.kind {
+            case .expense:
+                guard let i = snapshot.expenses.firstIndex(where: { $0.id == ref.id }) else { throw LedgerError("Not found.") }
+                snapshot.expenses[i].notes = text
+            case .bill:
+                guard let i = snapshot.bills.firstIndex(where: { $0.id == ref.id }) else { throw LedgerError("Not found.") }
+                snapshot.bills[i].notes = text
+            default: throw LedgerError("Only receipts and bills have notes.")
+            }
+            audit(ref.kind.table, ref.id, "update")
         }
         changed()
     }
