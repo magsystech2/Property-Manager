@@ -257,6 +257,10 @@ public struct EntryTemplate: Codable, Hashable, Identifiable, Sendable {
 /// What kind of problem a partner is flagging. Same values as the web app and the database check.
 public enum IssueCategory: String, CaseIterable, Codable, Sendable {
     case wrongAmount = "wrong_amount", duplicate, wrongDetails = "wrong_details", missing, appError = "app_error", idea, other
+    /// A "needs review" flag on a record (migration 10): kept with issue reports, shown on its own screen.
+    case needsReview = "needs_review"
+    /// The kinds a partner picks when reporting an issue (review flags have their own button).
+    public static var reportable: [IssueCategory] { allCases.filter { $0 != .needsReview } }
     public var label: String {
         switch self {
         case .wrongAmount: "Wrong amount"
@@ -266,6 +270,7 @@ public enum IssueCategory: String, CaseIterable, Codable, Sendable {
         case .appError: "Error or something didn't work"
         case .idea: "Idea or request"
         case .other: "Other"
+        case .needsReview: "Needs review"
         }
     }
     public static func label(_ raw: String) -> String { IssueCategory(rawValue: raw)?.label ?? raw }
@@ -306,6 +311,7 @@ public struct IssueReport: Codable, Hashable, Identifiable, Sendable {
     }
 
     public var isOpen: Bool { status == "open" }
+    public var isReviewFlag: Bool { category == IssueCategory.needsReview.rawValue }
     public var ref: EntryRef? {
         guard let k = recordKind, let id = recordId else { return nil }
         return EntryRef(k, id)

@@ -22,6 +22,7 @@ struct PartnersView: View {
                 }
             }
             PoolSection()
+            BorrowedSection(projectId: nil)
             Section {
                 Button { app.sheet = .reimbursement(partnerId: nil) } label: { Label("Reimburse a partner", systemImage: "arrow.uturn.backward.circle").frame(minHeight: 44) }
                 Button { app.sheet = .contribution(projectId: nil) } label: { Label("Add contribution", systemImage: "building.columns").frame(minHeight: 44) }
@@ -52,16 +53,23 @@ struct PartnersView: View {
 struct PoolSection: View {
     @Environment(AppModel.self) private var app
     @State private var projectId: UUID?
+    /// On a project's page: that project only, with no picker.
+    var fixedProject: UUID?
+
+    init(fixedProject: UUID? = nil) {
+        self.fixedProject = fixedProject
+        _projectId = State(initialValue: fixedProject)
+    }
 
     var body: some View {
         let l = app.ledger
         let s = l.poolSummary(project: projectId)
         let basis = switch s.shareSource { case .equal: "an equal share"; case .project: "this project's split"; case .default: "the default split" }
         Section {
-            Picker("Project", selection: $projectId) {
+            if fixedProject == nil { Picker("Project", selection: $projectId) {
                 Text("All projects").tag(UUID?.none)
                 ForEach(l.s.projects.sorted { $0.nickname < $1.nickname }) { p in Text(p.nickname).tag(UUID?.some(p.id)) }
-            }
+            } }
             LabeledMoney(label: "Total spent", cents: s.totalSpentCents, bold: true)
             LabeledMoney(label: "Paid from the LLC account", cents: s.paidByLLCCents)
             LabeledMoney(label: "Paid personally by partners", cents: s.paidPersonallyCents)
@@ -91,7 +99,7 @@ struct PoolPartnerRow: View {
             HStack(alignment: .firstTextBaseline) {
                 Text(line.member.displayName).font(.headline)
                 if line.shareBps > 0 {
-                    Text("\(line.shareBps / 100)\(line.shareBps % 100 == 0 ? "" : String(format: ".%02d", line.shareBps % 100))%")
+                    Text(Money.splitPct(line.shareBps))
                         .font(.caption).foregroundStyle(.secondary)
                 }
                 Spacer()

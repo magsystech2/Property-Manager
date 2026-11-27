@@ -38,7 +38,7 @@ struct ReportForm: View {
             }
             Section {
                 Picker("What kind of problem?", selection: $category) {
-                    ForEach(IssueCategory.allCases, id: \.self) { Text($0.label).tag($0) }
+                    ForEach(IssueCategory.reportable, id: \.self) { Text($0.label).tag($0) }
                 }
                 TextField(entry != nil ? "What's wrong? e.g. Should be $412.50, not $4,125.00" : "What's wrong? e.g. Tried to void a receipt and got an error",
                           text: $note, axis: .vertical)
@@ -117,7 +117,7 @@ struct IssuesView: View {
 
     var body: some View {
         let l = app.ledger
-        let all = l.s.issueReports
+        let all = l.s.issueReports.filter { !$0.isReviewFlag }   // review flags have their own screen
         let open = all.filter(\.isOpen).sorted { ($0.createdAt ?? "") > ($1.createdAt ?? "") }
         let resolved = all.filter { !$0.isOpen }.sorted { ($0.resolvedAt ?? "") > ($1.resolvedAt ?? "") }
         // Reports about the same record sit together, so a record flagged twice is fixed once.

@@ -147,6 +147,8 @@ enum Route: Hashable {
     case templates
     case reports
     case issues
+    case needsReview
+    case help
 }
 
 extension View {
@@ -173,6 +175,8 @@ extension View {
                 case .templates: TemplatesView()
                 case .reports: ReportsView()
                 case .issues: IssuesView()
+                case .needsReview: NeedsReviewView()
+                case .help: HelpView()
                 }
             }
             .navigationDestination(for: AnyRoute.self) { r in

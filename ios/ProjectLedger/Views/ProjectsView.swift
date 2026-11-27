@@ -82,14 +82,7 @@ struct ProjectDetailView: View {
         let l = app.ledger
         let t = l.totals(project: p.id)
         let lines = l.categorySummary(project: p.id)
-        Section {
-            if !p.address.isEmpty { LabeledContent("Address", value: p.address) }
-            LabeledContent("Type", value: p.typeLabel)
-            LabeledContent("Status", value: p.statusLabel)
-            if let d = p.startDate { LabeledContent("Start", value: Days.display(d)) }
-            if let d = p.targetCompleteDate { LabeledContent("Target completion", value: Days.display(d)) }
-            if let d = p.targetSaleDate { LabeledContent("Target sale", value: Days.display(d)) }
-        }
+        ReviewAlert(projectId: p.id)
         Section {
             LabeledMoney(label: "Approved budget", cents: t.budgetCents)
             link("Paid costs", t.paidCents, lines.flatMap(\.sources).filter { $0.kind == .expense || $0.kind == .payment },
@@ -110,6 +103,17 @@ struct ProjectDetailView: View {
             Text("Spending")
         } footer: {
             Text("Projected spend = paid + unpaid billed + committed not billed. Remaining = budget − projected spend.")
+        }
+        // Key numbers first, then who paid what and borrowed money (same order as the web project page).
+        PoolSection(fixedProject: p.id)
+        BorrowedSection(projectId: p.id)
+        Section("Project") {
+            if !p.address.isEmpty { LabeledContent("Address", value: p.address) }
+            LabeledContent("Type", value: p.typeLabel)
+            LabeledContent("Status", value: p.statusLabel)
+            if let d = p.startDate { LabeledContent("Start", value: Days.display(d)) }
+            if let d = p.targetCompleteDate { LabeledContent("Target completion", value: Days.display(d)) }
+            if let d = p.targetSaleDate { LabeledContent("Target sale", value: Days.display(d)) }
         }
         CostBasisSection(project: p)
         let ms = l.s.materials.filter { $0.projectId == p.id }

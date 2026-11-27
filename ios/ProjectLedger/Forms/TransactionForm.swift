@@ -24,6 +24,9 @@ enum FormRoute: Identifiable {
     case importStatement
     case addToInbox
     case report(ref: EntryRef?, error: String?, page: String)
+    case reviewFlag(EntryRef)
+    case correct(EntryRef)
+    case loan(PartnerLoan?, projectId: UUID?)
 
     init(_ a: AddAction, projectId: UUID? = nil) {
         switch a {
@@ -59,6 +62,9 @@ enum FormRoute: Identifiable {
         case .importStatement: "import-statement"
         case .addToInbox: "add-inbox"
         case .report(let r, _, _): "report-\(r?.id.uuidString ?? "app")"
+        case .reviewFlag(let r): "review-\(r.id)"
+        case .correct(let r): "correct-\(r.id)"
+        case .loan(let l, let p): "loan-\(l?.id.uuidString ?? "new")-\(p?.uuidString ?? "")"
         }
     }
 }
@@ -91,6 +97,9 @@ struct FormHost: View {
         case .importStatement: ImportStatementForm()
         case .addToInbox: AddToInboxSheet()
         case .report(let r, let e, let p): ReportForm(ref: r, error: e, page: p)
+        case .reviewFlag(let r): ReviewFlagForm(ref: r)
+        case .correct(let r): CorrectForm(ref: r)
+        case .loan(let l, let p): LoanForm(loan: l, projectId: p, me: app.me)
         }
     }
 }

@@ -545,5 +545,8 @@ public struct LedgerSnapshot: Codable, Sendable {
     public var entryTemplates: [EntryTemplate] = []
     // Issue reports (migration 08)
     public var issueReports: [IssueReport] = []
+    // Borrowed money (migration 09)
+    public var partnerLoans: [PartnerLoan] = []
+    public var partnerLoanPayments: [PartnerLoanPayment] = []
     public init(workspace: Workspace) { self.workspace = workspace }
 }

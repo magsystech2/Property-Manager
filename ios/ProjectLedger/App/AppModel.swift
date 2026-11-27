@@ -213,6 +213,99 @@ final class AppModel {
 
     func fileURL(path: String) async -> URL? { try? await backend?.fileURL(path: path) }
 
+    /// Mark a "needs review" flag done, with an optional note of what was found.
+    @discardableResult
+    func markReviewed(_ flags: [IssueReport], note: String) async -> Bool {
+        guard let backend else { return false }
+        let text = note.trimmingCharacters(in: .whitespacesAndNewlines)
+        let ok = await run {
+            for f in flags { try await backend.perform(.setIssueStatus(id: f.id, resolved: true, resolution: text.isEmpty ? "Reviewed" : text)) }
+        }
+        if ok { toast = "Marked reviewed"; await reload(quiet: true) }
+        return ok
+    }
+
+    // MARK: Correcting a receipt or bill
+
+    /// Why a receipt or bill can't be corrected in place (nil = it can).
+    func correctionBlocker(_ ref: EntryRef) -> String? {
+        guard let s = snapshot else { return "Not loaded" }
+        switch ref.kind {
+        case .expense: return s.expenses.first { $0.id == ref.id }.flatMap { Corrections.blocker(expense: $0, in: s) }
+        case .bill: return s.bills.first { $0.id == ref.id }.flatMap { Corrections.blocker(bill: $0, in: s) }
+        default: return "Only receipts and bills can be corrected in place."
+        }
+    }
+
+    /// Correct a posted receipt or bill: post a fixed copy (same documents and bank match), then void the original with a
+    /// reason that says what changed. Returns the new record's ref, or nil if nothing changed or it failed. Same as the web app.
+    func correct(_ ref: EntryRef, _ patch: CorrectionPatch) async -> EntryRef? {
+        guard let backend, let s = snapshot else { return nil }
+        if let b = correctionBlocker(ref) { errorMessage = b; return nil }
+        let l = ledger
+        let names = CorrectionNames(vendor: { l.vendor($0)?.name ?? "vendor" }, project: { l.project($0)?.nickname ?? "project" },
+                                    payer: { l.payerName($0) }, category: { l.category($0)?.name ?? "category" })
+        let newId = UUID()
+        let today = Days.display(Days.today)
+        let summary: String
+        var postExpense: (Expense, [Allocation])?
+        var postBill: (Bill, [Allocation])?
+        do {
+            if ref.kind == .expense, let old = s.expenses.first(where: { $0.id == ref.id }) {
+                var c = try Corrections.build(expense: old, allocations: s.allocations.filter { $0.expenseId == ref.id }, patch: patch, newId: newId, names: names)
+                c.row.notes = ["Corrected copy (\(today)): \(c.summary).", old.notes ?? ""].filter { !$0.isEmpty }.joined(separator: "\n")
+                try Rules.checkExpense(c.row, allocations: c.allocations)
+                summary = c.summary; postExpense = (c.row, c.allocations)
+            } else if ref.kind == .bill, let old = s.bills.first(where: { $0.id == ref.id }) {
+                var c = try Corrections.build(bill: old, allocations: s.allocations.filter { $0.billId == ref.id }, patch: patch, newId: newId, names: names)
+                c.row.notes = ["Corrected copy (\(today)): \(c.summary).", old.notes ?? ""].filter { !$0.isEmpty }.joined(separator: "\n")
+                // Check as if the original were already void (its invoice # is then free).
+                var asVoid = s
+                if let i = asVoid.bills.firstIndex(where: { $0.id == ref.id }) { asVoid.bills[i].status = RecordStatus.void }
+                try Rules.checkBill(c.row, allocations: c.allocations, in: Ledger(asVoid))
+                summary = c.summary; postBill = (c.row, c.allocations)
+            } else { return nil }
+        } catch {
+            errorMessage = error.localizedDescription
+            return nil
+        }
+        guard !summary.isEmpty else { return nil }
+        let voidReason = "Corrected (\(today)): \(summary). Replaced by a corrected copy."
+        let matches = ref.kind == .expense ? s.statementMatches.filter { $0.expenseId == ref.id } : []
+        let files = s.attachments.filter { ref.kind == .expense ? $0.expenseId == ref.id : $0.billId == ref.id }
+        let newRef = EntryRef(ref.kind, newId)
+        let ok = await run {
+            for m in matches { try await backend.perform(.removeMatch(id: m.id)) }
+            // A bill's invoice # must be unique among live bills, so the original is voided first; a receipt's copy goes in first.
+            if let (b, a) = postBill { try await backend.change(ref, .void(reason: voidReason)); try await backend.post(bill: b, allocations: a) }
+            if let (e, a) = postExpense { try await backend.post(expense: e, allocations: a); try await backend.change(ref, .void(reason: voidReason)) }
+            for f in files {
+                var copy = Attachment(workspaceId: f.workspaceId, storagePath: f.storagePath, filename: f.filename, mimeType: f.mimeType,
+                                      sizeBytes: f.sizeBytes, link: newRef)
+                copy.uploadedBy = nil
+                try await backend.add(attachment: copy)
+            }
+        }
+        guard ok else { await reload(quiet: true); return nil }
+        // Move the bank-statement match to the copy; if it no longer fits, the line goes back to unmatched.
+        for m in matches {
+            do { try await backend.perform(.addMatch(StatementMatch(workspaceId: m.workspaceId, statementLineId: m.statementLineId, expenseId: newId))) }
+            catch { _ = await run { try await backend.perform(.setLineStatus(id: m.statementLineId, status: "unmatched", reason: nil)) } }
+        }
+        // Open "needs review" flags follow the record to its corrected copy.
+        for f in l.reviewFlags(for: ref) {
+            var moved = f
+            moved.id = UUID(); moved.clientId = moved.id; moved.recordId = newId
+            _ = await run {
+                try await backend.perform(.addIssue(moved))
+                try await backend.perform(.setIssueStatus(id: f.id, resolved: true, resolution: "Corrected; the flag moved to the corrected copy"))
+            }
+        }
+        toast = "Corrected: the original is voided and a fixed copy is posted"
+        await reload(quiet: true)
+        return newRef
+    }
+
     // MARK: Drafts
 
     var allDrafts: [TransactionDraft] { _ = draftsVersion; return drafts?.drafts.sorted { $0.updatedAt > $1.updatedAt } ?? [] }
