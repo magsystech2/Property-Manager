@@ -535,3 +535,12 @@ td.editing .edit-input, span.editing .edit-input { width: 100%; min-width: 90px;
 .review-alert.compact .ra-icon { width: 28px; height: 28px; }
 .review-alert.compact .ra-title { font-size: 15px; }
 .review-alert.compact .ra-cta { padding: 5px 10px; font-size: 13px; }
+
+/* Projects listed under Projects in the sidebar */
+.nav-sub { display: flex; flex-direction: column; gap: 1px; margin: 1px 0 4px 19px; padding-left: 8px; border-left: 1px solid var(--brand-active); }
+.sidebar .nav-link.nav-sub-link { font-size: 13.5px; padding: 6px 8px; gap: 8px; min-width: 0; }
+.nav-sub-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.nav-dot { width: 7px; height: 7px; border-radius: 50%; background: #7fc79a; flex-shrink: 0; }
+.nav-dot.sold { background: var(--brand-muted); }
+.nav-sub-tag { margin-left: auto; font-size: 11px; color: var(--brand-muted); font-weight: 500; }
+.sidebar .nav-link.nav-sub-all { color: var(--brand-muted); font-size: 12.5px; }
