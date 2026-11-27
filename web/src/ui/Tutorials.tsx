@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { createContext, useContext, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { Icon } from './common'
 
 // ---------------------------------------------------------------------------
@@ -11,6 +11,26 @@ import { Icon } from './common'
 export const PHASE_MS = 4200
 const W = 300
 const H = 380
+/** Desktop frame: a browser window with the sidebar to the left of the same 300×380 page area. */
+const SW = 116
+const CH = 22
+/** True when the scene is drawn in the desktop layout (sidebar and top bar instead of phone header and tabs). */
+const Desktop = createContext(false)
+const useDesktop = () => useContext(Desktop)
+const sideItems: [string, string][] = [['home', 'Overview'], ['folder', 'Projects'], ['list', 'Activity'], ['users', 'Partners'], ['', ''], ['check', 'Weekly review'], ['alert', 'Needs review'], ['tray', 'Receipt inbox'], ['bank', 'Statements'], ['cash', 'Cash plan'], ['chart', 'Reports'], ['', ''], ['tray', 'More tools'], ['help', 'Help']]
+const sideY = (label: string) => { const i = sideItems.findIndex(([, l]) => l === label); return 84 + i * 20 + (i >= 4 ? -8 : 0) + (i >= 11 ? -8 : 0) }
+/** Where to tap for a main page: the phone's bottom tab, or the desktop sidebar item. */
+function useNavXY() {
+  const d = useDesktop()
+  const phone: Record<string, [number, number]> = { Overview: [30, 352], Projects: [90, 352], Add: [150, 351], Partners: [210, 352], 'More tools': [270, 352], Search: [262, 22] }
+  return (name: string): [number, number] => {
+    if (!d) return phone[name] ?? [150, 352]
+    if (name === 'Add') return [-SW / 2, 52]
+    if (name === 'Search') return [243, 22]
+    return [-SW + 40, sideY(name) + 7]
+  }
+}
+const navFor: Record<string, string> = { 'Project Ledger': 'Overview', Chamberlayne: 'Projects', Bill: 'Activity', Receipt: 'Activity', 'Add expense': 'Activity', Activity: 'Activity', Madhan: 'Partners', Partners: 'Partners' }
 
 // Timing helpers: t is progress through the current step, 0…1.
 /** Eased progress: 0 before `s`, 1 after `e`. */
@@ -88,7 +108,30 @@ function Abs({ x, y, w, h, style, children, className }: Box) {
 function Txt({ x, y, w = 270, size = 12, weight = 400, color = 'var(--text)', align = 'left', children, style }: { x: number; y: number; w?: number; size?: number; weight?: number; color?: string; align?: 'left' | 'right' | 'center'; children: ReactNode; style?: CSSProperties }) {
   return <Abs x={x} y={y} w={w} style={{ fontSize: size, fontWeight: weight, color, textAlign: align, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', lineHeight: 1.25, ...style }}>{children}</Abs>
 }
-function Head({ title, back, search }: { title: string; back?: boolean; search?: boolean }) {
+function Head({ title, back, search, nav, counts }: { title: string; back?: boolean; search?: boolean; nav?: string; counts?: Record<string, number> }) {
+  const d = useDesktop()
+  if (d) {
+    const active = nav ?? navFor[title] ?? title
+    return (
+      <>
+        <Abs x={-SW} y={0} w={SW} h={H} style={{ background: 'var(--brand)', color: 'var(--brand-text)' }}>
+          <Abs x={10} y={10} w={18} h={18} style={{ borderRadius: 5, background: 'var(--accent-soft)', color: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Icon name="list" size={11} /></Abs>
+          <Txt x={33} y={12} w={80} size={10} weight={700} color="var(--brand-text)">Project Ledger</Txt>
+          <Abs x={8} y={40} w={SW - 16} h={24} style={{ borderRadius: 7, background: 'var(--accent-soft)', color: 'var(--accent)', fontSize: 10, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 3 }}><Icon name="plus" size={11} />Add</Abs>
+          {sideItems.map(([icon, label], i) => label ? (
+            <Abs key={label} x={6} y={sideY(label)} w={SW - 12} h={18} style={{ borderRadius: 5, background: label === active ? 'var(--brand-active)' : undefined, color: label === active ? 'var(--brand-text)' : 'var(--brand-muted)', fontSize: 9.5, fontWeight: label === active ? 700 : 500, display: 'flex', alignItems: 'center', gap: 5, paddingLeft: 5, whiteSpace: 'nowrap' }}>
+              <Icon name={icon} size={10} />{label}
+              {counts?.[label] ? <span style={{ marginLeft: 'auto', marginRight: 4, background: 'var(--warn)', color: '#fff', borderRadius: 7, fontSize: 8, fontWeight: 800, padding: '0 5px' }}>{counts[label]}</span> : null}
+            </Abs>
+          ) : <Abs key={i} x={10} y={sideY(sideItems[i + 1][1]) - 12} w={SW - 20} h={10} style={{ fontSize: 7, fontWeight: 700, letterSpacing: 0.6, color: 'var(--brand-muted)' }}>{i === 4 ? 'FINANCE' : ''}</Abs>)}
+        </Abs>
+        <Abs x={0} y={0} w={W} h={44} style={{ background: 'var(--bg)', borderBottom: '1px solid var(--border)' }}>
+          <Txt x={12} y={15} w={172} size={11} color="var(--muted)">Workspace / <span style={{ color: 'var(--text)', fontWeight: 700 }}>{title === 'Project Ledger' ? active : title}</span></Txt>
+          <Abs x={190} y={10} w={100} h={24} style={{ border: '1px solid var(--border)', borderRadius: 7, background: 'var(--surface)', color: 'var(--muted)', fontSize: 9.5, display: 'flex', alignItems: 'center', gap: 4, paddingLeft: 7 }}><Icon name="search" size={10} />Search records</Abs>
+        </Abs>
+      </>
+    )
+  }
   return (
     <Abs x={0} y={0} w={W} h={44} style={{ background: 'var(--brand)', color: 'var(--brand-text)' }}>
       {back && <Abs x={10} y={13} style={{ color: 'var(--brand-muted)' }}><Icon name="back" size={16} /></Abs>}
@@ -99,6 +142,7 @@ function Head({ title, back, search }: { title: string; back?: boolean; search?:
 }
 const tabX = [30, 90, 150, 210, 270]
 function Tabs({ active }: { active: number }) {
+  if (useDesktop()) return null
   const tabs: [string, string][] = [['home', 'Home'], ['folder', 'Projects'], ['plus', 'Add'], ['users', 'Partners'], ['tray', 'More']]
   return (
     <Abs x={0} y={334} w={W} h={46} style={{ background: 'var(--surface)', borderTop: '1px solid var(--border)' }}>
@@ -151,12 +195,13 @@ function Badge({ x, y, label, tone = 'neutral' }: { x: number; y: number; label:
 }
 /** A sheet sliding up from the bottom; `show` 0…1. */
 function Sheet({ show, h, title, children }: { show: number; h: number; title?: string; children: ReactNode }) {
+  const d = useDesktop()
   if (show <= 0) return null
   return (
     <>
-      <Abs x={0} y={0} w={W} h={H} style={{ background: 'rgba(0,0,0,0.35)', opacity: show }} />
-      <Abs x={0} y={H - h * show} w={W} h={h} style={{ background: 'var(--bg)', borderRadius: '16px 16px 0 0', boxShadow: '0 -6px 20px rgba(0,0,0,0.18)' }}>
-        <Abs x={135} y={6} w={30} h={4} style={{ borderRadius: 2, background: 'var(--border)' }} />
+      <Abs x={d ? -SW : 0} y={0} w={d ? W + SW : W} h={H} style={{ background: 'rgba(0,0,0,0.35)', opacity: show, zIndex: 3 }} />
+      <Abs x={0} y={d ? H - h - 6 + 14 * (1 - show) : H - h * show} w={W} h={h} style={{ background: 'var(--bg)', borderRadius: d ? 12 : '16px 16px 0 0', boxShadow: '0 -6px 20px rgba(0,0,0,0.18)', zIndex: 4, opacity: d ? show : 1 }}>
+        {!d && <Abs x={135} y={6} w={30} h={4} style={{ borderRadius: 2, background: 'var(--border)' }} />}
         {title && <Txt x={14} y={16} size={13} weight={700}>{title}</Txt>}
         {children}
       </Abs>
@@ -304,14 +349,17 @@ function Basics({ p, t }: SP) {
     </Fade>
   )
   const tabFor = [0, 1, 3, 0, 0, 4]
-  const targets: [number, number][] = [[150, 113], [90, 352], [210, 352], [262, 22], [150, 351], [270, 352]]
+  const nav = useNavXY()
+  const navName = ['Overview', 'Projects', 'Partners', 'Activity', 'Overview', 'More tools']
+  const targets: [number, number][] = [[150, 113], nav('Projects'), nav('Partners'), nav('Search'), nav('Add'), nav('More tools')]
+  const shown = p === 0 ? 0 : s > 0.5 ? p : p - 1
   return (
     <>
       {p > 0 && p !== 5 && s < 1 && screen(p - 1, 1 - s)}
       {p === 5 && s < 1 && screen(4, 1 - s)}
       {screen(p, s)}
-      <Head title="Project Ledger" search />
-      <Tabs active={tabFor[p === 0 ? 0 : s > 0.5 ? p : p - 1]} />
+      <Head title="Project Ledger" search nav={navName[shown]} />
+      <Tabs active={tabFor[shown]} />
       {p === 4 && <AddMenu show={ramp(t, tap + 0.03, tap + 0.2)} />}
       {p === 5 && <AddMenu show={1 - ramp(t, 0, 0.12)} />}
       {p === 0 ? <Finger t={t} stops={[[0.6, 150, 113, 'move']]} fadeOut={0.85} /> : <Finger t={t} stops={[[tap, ...targets[p]]]} />}
@@ -387,6 +435,8 @@ function Projects({ p, t }: SP) {
 }
 
 function AddExpense({ p, t }: SP) {
+  const nav = useNavXY()
+  const d = useDesktop()
   if (p === 0) {
     return (
       <>
@@ -394,7 +444,7 @@ function AddExpense({ p, t }: SP) {
         <Head title="Project Ledger" search />
         <Tabs active={0} />
         <AddMenu show={ramp(t, 0.22, 0.38)} hl={t > 0.7 ? 0 : -1} />
-        <Finger t={t} stops={[[0.18, 150, 351], [0.7, 150, H - 226 + 60]]} />
+        <Finger t={t} stops={[[0.18, ...nav('Add')], [0.7, 150, (d ? H - 232 : H - 226) + 60]]} />
       </>
     )
   }
@@ -672,7 +722,7 @@ function Review({ p, t }: SP) {
     return (
       <>
         <HomeScreen />
-        <Head title="Project Ledger" search />
+        <Head title="Project Ledger" search counts={{ 'Needs review': n }} />
         <Tabs active={0} />
         <Abs x={10} y={234} w={280} h={40} style={{ borderRadius: 10, boxShadow: `0 0 0 ${3 * bump(t, 0.3, 0.7)}px var(--tut-tint)` }} />
         <Card y={234} h={40}>
@@ -969,23 +1019,30 @@ const scenes: Record<string, (p: SP) => ReactNode> = {
 // The player
 // ---------------------------------------------------------------------------
 
-function useReducedMotion() {
-  const q = typeof window !== 'undefined' && window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : null
-  const [reduce, setReduce] = useState(!!q?.matches)
+function useMedia(query: string) {
+  const get = () => typeof window !== 'undefined' && !!window.matchMedia && window.matchMedia(query).matches
+  const [on, setOn] = useState(get)
   useEffect(() => {
-    if (!q) return
-    const h = () => setReduce(q.matches)
+    if (!window.matchMedia) return
+    const q = window.matchMedia(query)
+    const h = () => setOn(q.matches)
+    h()
     q.addEventListener?.('change', h)
     return () => q.removeEventListener?.('change', h)
-  }, [q])
-  return reduce
+  }, [query])
+  return on
 }
+const useReducedMotion = () => useMedia('(prefers-reduced-motion: reduce)')
 
 /** Plays a guide's scene beside its steps, one phase per step, in a loop. Clicking a step shows it;
  * Pause stops on the current frame. With reduced motion nothing plays by itself: the scene shows the
  * chosen step's result. */
 export function TutorialPlayer({ scene, steps, tint }: { scene: string; steps: string[]; tint: string }) {
   const reduce = useReducedMotion()
+  // Same switch as the app (sidebar from 901px): a computer gets the web layout (sidebar, top bar); a phone gets the phone layout (header, bottom tabs).
+  const desktop = useMedia('(min-width: 901px)')
+  const fullW = desktop ? SW + W : W
+  const fullH = desktop ? CH + H : H
   const [paused, setPaused] = useState(false)
   const [pos, setPos] = useState({ phase: 0, t: reduce ? 0.999 : 0 })
   const origin = useRef(performance.now())
@@ -998,10 +1055,10 @@ export function TutorialPlayer({ scene, steps, tint }: { scene: string; steps: s
   useEffect(() => {
     const el = stage.current
     if (!el) return
-    const ro = new ResizeObserver(() => setScale(el.clientWidth / W))
+    const ro = new ResizeObserver(() => setScale(el.clientWidth / fullW))
     ro.observe(el)
     return () => ro.disconnect()
-  }, [])
+  }, [fullW])
 
   useEffect(() => { origin.current = performance.now(); setPos({ phase: 0, t: reduce ? 0.999 : 0 }) }, [scene, reduce])
 
@@ -1013,7 +1070,7 @@ export function TutorialPlayer({ scene, steps, tint }: { scene: string; steps: s
       raf = requestAnimationFrame(tick)
       if (now - last < 30) return
       last = now
-      const local = (now - origin.current) % (PHASE_MS * n)
+      const local = Math.max(0, now - origin.current) % (PHASE_MS * n)
       const phase = Math.min(Math.floor(local / PHASE_MS), n - 1)
       setPos({ phase, t: (local - phase * PHASE_MS) / PHASE_MS })
     }
@@ -1043,9 +1100,19 @@ export function TutorialPlayer({ scene, steps, tint }: { scene: string; steps: s
   return (
     <div className="tut" style={{ ['--tut-tint' as string]: tint } as CSSProperties}>
       <div className="tut-side">
-        <div className="tut-stage" ref={stage} aria-hidden="true">
-          <div className="tut-canvas" style={{ width: W, height: H, transform: `scale(${scale})` }}>
-            {Scene && <Scene p={pos.phase} t={pos.t} />}
+        <div className={`tut-stage ${desktop ? 'desktop' : 'phone'}`} ref={stage} aria-hidden="true" style={{ aspectRatio: `${fullW} / ${fullH}` }}>
+          <div className="tut-canvas" style={{ width: fullW, height: fullH, transform: `scale(${scale})` }}>
+            {desktop && (
+              <div className="tut-chrome" style={{ height: CH }}>
+                <i /><i /><i />
+                <span>project-ledger</span>
+              </div>
+            )}
+            <div style={{ position: 'absolute', left: desktop ? SW : 0, top: desktop ? CH : 0, width: W, height: H }}>
+              <Desktop.Provider value={desktop}>
+                {Scene && <Scene p={pos.phase} t={pos.t} />}
+              </Desktop.Provider>
+            </div>
           </div>
         </div>
         {autoplay && (

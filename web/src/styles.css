@@ -482,10 +482,14 @@ td.editing .edit-input, span.editing .edit-input { width: 100%; min-width: 90px;
 .help-go { align-self: flex-start; }
 .help-next .small { white-space: nowrap; }
 /* Animated walk-throughs (ui/Tutorials.tsx) */
-.tut { display: grid; grid-template-columns: minmax(240px, 300px) 1fr; gap: 20px; align-items: start; }
+.tut { display: grid; grid-template-columns: minmax(300px, 420px) 1fr; gap: 20px; align-items: start; }
 .tut-side { display: flex; flex-direction: column; align-items: center; gap: 10px; position: sticky; top: 16px; }
 .tut-stage { width: 100%; aspect-ratio: 300 / 380; position: relative; overflow: hidden; border-radius: 26px;
   border: 1px solid var(--border); box-shadow: 0 10px 28px rgba(0,0,0,0.14); background: var(--bg); }
+.tut-stage.desktop { border-radius: 12px; }
+.tut-chrome { position: absolute; left: 0; top: 0; right: 0; display: flex; align-items: center; gap: 5px; padding-left: 9px; background: var(--surface-2); border-bottom: 1px solid var(--border); z-index: 6; }
+.tut-chrome i { width: 7px; height: 7px; border-radius: 50%; background: var(--border); }
+.tut-chrome span { margin-left: 10px; font-size: 8.5px; color: var(--muted); background: var(--surface); border-radius: 5px; padding: 1px 40px; }
 .tut-canvas { position: absolute; left: 0; top: 0; transform-origin: top left; background: var(--bg); font-family: inherit; overflow: hidden; }
 .tut-play { font: inherit; font-size: 12px; font-weight: 700; background: none; border: 1.5px solid; border-radius: 999px; padding: 4px 14px; cursor: pointer; }
 .tut-steps { list-style: none; margin: 0; padding: 4px 14px; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; }
