@@ -68,6 +68,8 @@ export class AppStore {
   modal: Modal | null = null
   drafts: DraftStore | null = null
   draftList: TransactionDraft[] = []
+  /** Partner whose numbers the Home and Projects pages show. null means the signed-in partner. */
+  viewPartner: string | null = null
   private unsubscribe: (() => void) | null = null
   private reloadTimer: number | undefined
   private toastTimer: number | undefined
@@ -82,6 +84,12 @@ export class AppStore {
   get isDemo() { return this.backend?.isDemo ?? false }
   get me() { return this.backend?.userId() ?? null }
   get myMember() { return this.snapshot?.members.find((m) => m.user_id === this.me) }
+  /** The partner the partner-facing pages are filtered to: the chosen one if still a member, else me. */
+  get viewing() {
+    const v = this.viewPartner
+    return v && this.snapshot?.members.some((m) => m.user_id === v) ? v : this.me
+  }
+  setViewPartner(id: string | null) { this.viewPartner = id && id !== this.me ? id : null; this.emit() }
   get isOwner() { return this.myMember?.role === 'owner' }
   get workspace() { return this.snapshot?.workspace ?? null }
   get demo() { return this.backend instanceof DemoBackend ? this.backend : null }
@@ -190,6 +198,7 @@ export class AppStore {
     const b = this.backend
     if (!b) return
     AppConfig.lastWorkspace = id
+    this.viewPartner = null
     this.drafts = new DraftStore(b.isDemo ? 'demo' : id)
     this.draftList = this.drafts.all()
     await this.reload()
