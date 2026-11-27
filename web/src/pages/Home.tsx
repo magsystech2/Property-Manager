@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom'
 import { useStore } from '../store'
+import { ReviewAlert } from '../ui/ReviewAlert'
 import { Money, type Cents } from '../core/money'
 import { isActiveProject, projectTypeLabel, projectStatusLabel, type Project } from '../core/models'
 import { EntryList, Hero, Icon, Section, StatStrip, Tile } from '../ui/common'
@@ -89,6 +90,8 @@ export function HomePage() {
         <button className="btn" onClick={() => app.reload()} disabled={app.syncing} aria-label="Refresh"><Icon name="refresh" /></button>
         <Link className="btn primary" to="/review">Open weekly review ↗</Link>
       </div>
+
+      <ReviewAlert />
 
       <Hero label="What I’ve put in" cents={mine?.put_in_cents ?? 0}
         side={top ? (

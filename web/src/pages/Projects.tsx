@@ -2,6 +2,7 @@ import { newDraft } from '../drafts'
 import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useStore } from '../store'
+import { ReviewAlert } from '../ui/ReviewAlert'
 import { Days, Money, type Cents } from '../core/money'
 import { dedupe } from '../core/ledger'
 import { isActiveProject, projectStatusLabel, projectTypeLabel, type EntryRef } from '../core/models'
@@ -51,6 +52,7 @@ export function ProjectDetailPage() {
           <Link className="btn" to={`/export?project=${p.id}`}><Icon name="download" />CSV</Link>
         </div>
       </PageHead>
+      <ReviewAlert projectId={p.id} />
       <ProjectHero pid={p.id} />
       <Segmented value={tab} onChange={setTab} options={[['overview', 'Overview'], ['budget', 'Budget'], ['forecast', 'Forecast'], ['sale', 'Sale and split'], ['materials', 'Materials'], ['activity', 'Activity'], ['vendors', 'Vendors'], ['files', 'Files']]} />
       {tab === 'overview' && <Overview pid={p.id} />}
