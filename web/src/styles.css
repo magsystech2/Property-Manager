@@ -548,3 +548,10 @@ td.editing .edit-input, span.editing .edit-input { width: 100%; min-width: 90px;
 .nav-dot.sold { background: var(--brand-muted); }
 .nav-sub-tag { margin-left: auto; font-size: 11px; color: var(--brand-muted); font-weight: 500; }
 .sidebar .nav-link.nav-sub-all { color: var(--brand-muted); font-size: 12.5px; }
+
+.view-partner { display: inline-flex; align-items: center; gap: 6px; }
+.view-partner select { font-weight: 600; }
+@media (max-width: 900px) {
+  .page-title .view-partner, .page-head .view-partner { flex: 1 1 100%; }
+  .view-partner select { flex: 1; }
+}

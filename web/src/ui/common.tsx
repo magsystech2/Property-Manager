@@ -201,6 +201,22 @@ export function PartnerSelect({ value, onChange, allowLLC, llcLabel = 'LLC accou
   )
 }
 
+/** Picks which partner's numbers a page shows. Starts on the signed-in partner. */
+export function ViewPartnerSelect() {
+  const app = useStore()
+  const value = app.viewing ?? ''
+  const members = app.ledger.s.members.filter((m) => !m.access_revoked_at || m.user_id === value)
+  if (members.length < 2) return null
+  return (
+    <label className="view-partner">
+      <span className="small muted">Partner</span>
+      <select className="compact-select" value={value} onChange={(e) => app.setViewPartner(e.target.value || null)} aria-label="Show numbers for partner">
+        {members.map((m) => <option key={m.user_id} value={m.user_id}>{m.display_name}{m.user_id === app.me ? ' (me)' : ''}</option>)}
+      </select>
+    </label>
+  )
+}
+
 export function MethodSelect({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   return <select value={value} onChange={(e) => onChange(e.target.value)}>{PaymentMethods.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>
 }

@@ -6,7 +6,7 @@ import { ReviewAlert } from '../ui/ReviewAlert'
 import { Days, Money, type Cents, splitPct } from '../core/money'
 import { dedupe } from '../core/ledger'
 import { isActiveProject, projectStatusLabel, projectTypeLabel, type EntryRef } from '../core/models'
-import { AttachmentRow, EditCell, EntryList, Icon, StatStrip, KV, MoneyKV, MoneyText, PageHead, Section, Segmented, recordPath } from '../ui/common'
+import { AttachmentRow, EditCell, EntryList, Icon, ViewPartnerSelect, StatStrip, KV, MoneyKV, MoneyText, PageHead, Section, Segmented, recordPath } from '../ui/common'
 import { StakeRow, myStake } from './Home'
 import { MoneyAtAGlance } from '../ui/Glance'
 import { ProjectForecast } from './Forecast'
@@ -17,16 +17,19 @@ export function ProjectsPage() {
   const app = useStore()
   const ps = [...app.ledger.s.projects].sort((a, b) => a.nickname.localeCompare(b.nickname))
   const sold = ps.filter((p) => !isActiveProject(p))
+  const who = app.viewing ?? ''
+  const other = who !== app.me ? app.ledger.payerName(who) : undefined
   return (
     <div className="stack">
       <PageHead title="Projects">
+        <ViewPartnerSelect />
         <button className="btn primary" onClick={() => app.open({ type: 'project' })}><Icon name="plus" />New project</button>
       </PageHead>
       <Section title="Active">
-        {ps.filter(isActiveProject).map((p) => <StakeRow key={p.id} project={p} stake={myStake(app.ledger, app.me ?? '', p)} />)}
+        {ps.filter(isActiveProject).map((p) => <StakeRow key={p.id} project={p} stake={myStake(app.ledger, who, p)} other={other} />)}
         {ps.filter(isActiveProject).length === 0 && <div className="empty">No active projects yet.</div>}
       </Section>
-      {sold.length > 0 && <Section title="Sold">{sold.map((p) => <StakeRow key={p.id} project={p} stake={myStake(app.ledger, app.me ?? '', p)} />)}</Section>}
+      {sold.length > 0 && <Section title="Sold">{sold.map((p) => <StakeRow key={p.id} project={p} stake={myStake(app.ledger, who, p)} other={other} />)}</Section>}
       <Section>
         <Link className="item" to="/vendors"><Icon name="store" /><span className="grow">Vendors and contractors</span><Icon name="chevron" /></Link>
       </Section>
