@@ -476,19 +476,38 @@ td.editing .edit-input, span.editing .edit-input { width: 100%; min-width: 90px;
 .help-word { padding: 11px 16px; }
 .help-word .k { flex: 0 0 150px; }
 .help-word .v { text-align: left; flex: 1; color: var(--muted); }
-.help-guide { max-width: 720px; }
+.help-guide { max-width: 860px; }
 .help-intro { color: var(--muted); font-size: 16px; margin: 0; line-height: 1.5; }
-.help-steps { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 8px; }
-.help-step { display: flex; gap: 12px; align-items: flex-start; width: 100%; text-align: left; font: inherit; color: var(--text); line-height: 1.5;
-  background: var(--surface); border: 1.5px solid var(--border); border-radius: 12px; padding: 12px 14px; cursor: pointer; }
-.help-step:hover { background: var(--surface-2); }
-.help-step.on { background: var(--surface-2); }
-.help-num { flex-shrink: 0; width: 26px; height: 26px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center;
-  font-weight: 700; font-size: 13px; background: var(--surface-2); color: var(--text); border: 1px solid var(--border); }
-.help-step.on .help-num { color: #fff; border-color: transparent; }
 .help-tip { line-height: 1.5; }
 .help-go { align-self: flex-start; }
 .help-next .small { white-space: nowrap; }
+/* Animated walk-throughs (ui/Tutorials.tsx) */
+.tut { display: grid; grid-template-columns: minmax(240px, 300px) 1fr; gap: 20px; align-items: start; }
+.tut-side { display: flex; flex-direction: column; align-items: center; gap: 10px; position: sticky; top: 16px; }
+.tut-stage { width: 100%; aspect-ratio: 300 / 380; position: relative; overflow: hidden; border-radius: 26px;
+  border: 1px solid var(--border); box-shadow: 0 10px 28px rgba(0,0,0,0.14); background: var(--bg); }
+.tut-canvas { position: absolute; left: 0; top: 0; transform-origin: top left; background: var(--bg); font-family: inherit; overflow: hidden; }
+.tut-play { font: inherit; font-size: 12px; font-weight: 700; background: none; border: 1.5px solid; border-radius: 999px; padding: 4px 14px; cursor: pointer; }
+.tut-steps { list-style: none; margin: 0; padding: 4px 14px; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; }
+.tut-steps li + li { border-top: 1px solid var(--border); }
+.tut-step { display: flex; gap: 12px; align-items: flex-start; width: 100%; text-align: left; font: inherit; line-height: 1.5;
+  background: none; border: 0; padding: 12px 0; cursor: pointer; color: var(--muted); }
+.tut-step.on { color: var(--text); }
+.tut-num { flex-shrink: 0; width: 26px; height: 26px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: 13px; }
+.tut-text { flex: 1; min-width: 0; }
+.tut-progress { display: block; height: 3px; border-radius: 2px; margin-top: 8px; overflow: hidden; }
+.tut-progress > span { display: block; height: 100%; border-radius: 2px; }
+.tut-finger { position: absolute; width: 0; height: 0; pointer-events: none; z-index: 5; }
+.tut-dot { position: absolute; left: 0; top: 0; width: 28px; height: 28px; border-radius: 50%; background: rgba(0,0,0,0.22);
+  border: 2px solid rgba(255,255,255,0.92); box-shadow: 0 2px 6px rgba(0,0,0,0.3); }
+.tut-ripple { position: absolute; left: 0; top: 0; transform: translate(-50%, -50%); border-radius: 50%; border: 3px solid var(--tut-tint); }
+.tut-caret { display: inline-block; width: 1.5px; height: 1em; background: var(--tut-tint); margin-left: 1px; vertical-align: -2px; animation: tut-blink 1s steps(1) infinite; }
+@keyframes tut-blink { 50% { opacity: 0; } }
+@media (max-width: 760px) {
+  .tut { grid-template-columns: 1fr; }
+  .tut-side { position: static; }
+  .tut-stage { max-width: 300px; }
+}
 @media (max-width: 640px) {
   .help-word { flex-direction: column; gap: 2px; }
   .help-word .k { flex: none; }
