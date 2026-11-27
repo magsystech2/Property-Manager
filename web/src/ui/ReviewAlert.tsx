@@ -4,7 +4,7 @@ import { Money } from '../core/money'
 import { Icon } from './common'
 
 /** A bright banner while entries are flagged "needs review" (all of them, or one project's). Hidden when there are none. */
-export function ReviewAlert({ projectId }: { projectId?: string }) {
+export function ReviewAlert({ projectId, compact }: { projectId?: string; compact?: boolean }) {
   const app = useStore()
   const l = app.ledger
   const seen = new Set<string>()
@@ -19,7 +19,7 @@ export function ReviewAlert({ projectId }: { projectId?: string }) {
   const total = items.reduce((a, x) => a + x.e.amount_cents, 0)
   const names = [...new Set(items.map((x) => (projectId ? x.e.title : l.project(x.e.project_id)?.nickname ?? x.e.title)))]
   return (
-    <Link to="/needs-review" className="review-alert" role="alert">
+    <Link to="/needs-review" className={compact ? 'review-alert compact' : 'review-alert'} role="alert">
       <span className="ra-icon"><Icon name="alert" size={20} /></span>
       <span className="ra-body">
         <span className="ra-title">{items.length} {items.length === 1 ? 'entry needs' : 'entries need'} review</span>

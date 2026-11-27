@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useStore } from '../store'
-import { Money, type Cents } from '../core/money'
+import { Money, type Cents, splitPct } from '../core/money'
 import { poolSummary } from '../core/settlement'
 import type { Ledger } from '../core/ledger'
 import { Section, StatStrip, EditCell } from './common'
@@ -59,7 +59,7 @@ export function MoneyAtAGlance({ projectId, title = 'Who paid what' }: { project
                 <td className="num">{f(p.paid_personally_cents)}</td>
                 <td className="num">{p.reimbursed_cents ? `−${f(p.reimbursed_cents)}` : f(0)}</td>
                 <td className="num bold">{f(p.put_in_cents)}</td>
-                <td className="num">{p.share_bps ? `${p.share_bps / 100}%` : '—'}</td>
+                <td className="num">{p.share_bps ? splitPct(p.share_bps) : '—'}</td>
                 <td className="num">{f(p.share_of_spending_cents)}</td>
                 <td className={`num bold ${p.over_share_cents < 0 ? 'bad' : p.over_share_cents > 0 ? 'good' : ''}`}>{p.over_share_cents > 0 ? '+' : ''}{f(p.over_share_cents)}</td>
                 <td className="num">{f(dist(p.member.user_id))}</td>
@@ -79,7 +79,7 @@ export function MoneyAtAGlance({ projectId, title = 'Who paid what' }: { project
               <span>Paid personally</span><span>{f(p.paid_personally_cents)}</span>
               <span>Paid back to them</span><span>{f(p.reimbursed_cents)}</span>
               <span className="bold">Total put in</span><span className="bold">{f(p.put_in_cents)}</span>
-              <span>Split · share of costs</span><span>{p.share_bps / 100}% · {f(p.share_of_spending_cents)}</span>
+              <span>Split · share of costs</span><span>{splitPct(p.share_bps)} · {f(p.share_of_spending_cents)}</span>
               <span>Paid out from sales</span><span>{f(dist(p.member.user_id))}</span>
             </div>
           </div>
