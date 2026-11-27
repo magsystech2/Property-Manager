@@ -243,6 +243,7 @@ export function BooksPage() {
       ['/import', 'list', 'Bulk upload', 'Many records from a spreadsheet'],
       ['/export', 'download', 'Export CSV', 'For your accountant'],
       ['/settings', 'settings', 'Settings', 'Members, invites, sign out'],
+      ['/help', 'help', 'Help', 'How to use the app, step by step'],
     ]],
   ]
   return (
