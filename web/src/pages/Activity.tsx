@@ -4,7 +4,7 @@ import { useStore } from '../store'
 import { emptyFilter, type ActivityFilter } from '../core/ledger'
 import { allKinds, kindLabel, refKey, type EntryKind, type EntryRef } from '../core/models'
 import { Money } from '../core/money'
-import { EntryList, Field, Icon, PageHead, PartnerSelect, ProjectSelect, CategorySelect, Section } from '../ui/common'
+import { EntryList, Field, Icon, PageHead, ProjectSelect, CategorySelect, Section, viewLabel } from '../ui/common'
 
 // "See records" links: the list of records behind a total, kept for this browser tab.
 export function recordsLink(title: string, refs: EntryRef[], explanation?: string): string {
@@ -44,7 +44,12 @@ export function ActivityPage() {
   // The sidebar search box opens this page with ?q=…; a new search there replaces the text here.
   const q = params.get('q') ?? ''
   useEffect(() => { setF((cur) => (cur.text === q ? cur : { ...cur, text: q })) }, [q])
-  const results = useMemo(() => l.search(f), [l, f])
+  const matches = useMemo(() => l.search(f), [l, f])
+  // The partner filter in the top bar: show records where the chosen partners' own money moved. "All partners" shows everything, LLC account included.
+  const ids = app.viewingIds
+  const everyone = app.viewingAll
+  const results = useMemo(() => everyone ? matches : matches.filter((e) => e.partner_id != null && ids.includes(e.partner_id)), [matches, everyone, ids.join()]) // eslint-disable-line react-hooks/exhaustive-deps
+  const hidden = matches.length - results.length
   const set = (patch: Partial<ActivityFilter>) => {
     setF({ ...f, ...patch })
     if (patch.text !== undefined) setParams(patch.text ? { q: patch.text } : {}, { replace: true })
@@ -82,7 +87,6 @@ export function ActivityPage() {
                 {[...l.s.vendors].sort((a, b) => a.name.localeCompare(b.name)).map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
               </select>
             </Field>
-            <Field label="Partner (whose money moved)"><PartnerSelect value={f.partner_id} onChange={(v) => set({ partner_id: v })} allowLLC llcLabel="Any" /></Field>
             <Field label="Budget category"><CategorySelect value={f.category_id} onChange={(v) => set({ category_id: v })} /></Field>
             <Field label="Status">
               <select value={f.status_text ?? ''} onChange={(e) => set({ status_text: e.target.value || null })}>
@@ -101,6 +105,12 @@ export function ActivityPage() {
         <div className="row wrap" style={{ gap: 6 }}>
           {projectHits.map((p) => <Link key={p.id} className="badge neutral" to={`/projects/${p.id}`}><Icon name="folder" size={12} />{p.nickname}</Link>)}
           {vendorHits.map((v) => <Link key={v.id} className="badge neutral" to={`/vendors/${v.id}`}><Icon name="store" size={12} />{v.name}</Link>)}
+        </div>
+      )}
+      {!everyone && (
+        <div className="callout info row wrap">
+          <span className="grow">Showing records where {viewLabel(app)}’s own money moved{hidden ? `. ${hidden} other record${hidden === 1 ? '' : 's'} (LLC account or other partners) hidden.` : '.'}</span>
+          {hidden > 0 && <button className="btn link" onClick={() => app.setView('all')}>Show all partners</button>}
         </div>
       )}
       <Section title={`${results.length} result${results.length === 1 ? '' : 's'}`}

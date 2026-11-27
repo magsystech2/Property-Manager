@@ -3,7 +3,7 @@ import { useStore } from '../store'
 import { ReviewAlert } from '../ui/ReviewAlert'
 import { Money, type Cents, splitPct } from '../core/money'
 import { isActiveProject, projectTypeLabel, projectStatusLabel, type Project } from '../core/models'
-import { EntryList, Hero, Icon, Section, StatStrip, Tile, ViewPartnerSelect } from '../ui/common'
+import { EntryList, Hero, Icon, Section, StatStrip, Tile, viewLabel } from '../ui/common'
 import { recordsLink } from './Activity'
 import { cashPlan, missingReceipts } from '../core/planning'
 import { dueTemplates } from './Reports'
@@ -27,6 +27,18 @@ export function myStake(l: Ledger, uid: string, p: Project) {
     put_in_cents: pool?.put_in_cents ?? 0, share_bps: bps, sold,
     profit_cents: sum.profit_cents, my_profit_cents: payout ? payout.profit_share_cents : profitShare,
     due_cents: payout?.due_cents ?? null, paid_out_cents: payout?.distributed_cents ?? 0, still_to_come_cents: payout ? Math.max(payout.remaining_cents, 0) : null,
+  }
+}
+
+/** Several partners' stakes in one project, added up (one id gives that partner's own stake). */
+export function groupStake(l: Ledger, ids: string[], p: Project): ReturnType<typeof myStake> {
+  const all = ids.map((id) => myStake(l, id, p))
+  if (all.length === 1) return all[0]
+  const add = (f: (s: ReturnType<typeof myStake>) => number | null) => all.some((s) => f(s) != null) ? all.reduce((a, s) => a + (f(s) ?? 0), 0) : null
+  const sold = projectSummary(l, p).profit_is_actual
+  return {
+    put_in_cents: add((s) => s.put_in_cents) ?? 0, share_bps: add((s) => s.share_bps) ?? 0, sold, profit_cents: all[0]?.profit_cents ?? null,
+    my_profit_cents: add((s) => s.my_profit_cents), due_cents: add((s) => s.due_cents), paid_out_cents: add((s) => s.paid_out_cents) ?? 0, still_to_come_cents: add((s) => s.still_to_come_cents),
   }
 }
 
@@ -67,21 +79,31 @@ export function HomePage() {
   const app = useStore()
   const l = app.ledger
   const name = app.myMember?.display_name ?? 'Partner'
-  // The partner dropdown picks whose numbers the cards show; to-dos stay the signed-in partner's.
-  const me = app.viewing ?? ''
-  const isMe = me === app.me
-  const who = l.payerName(me)
+  // The partner filter picks whose numbers the cards show (one, several or all, added up); to-dos stay the signed-in partner's.
+  const ids = app.viewingIds
+  const single = ids.length === 1 ? ids[0] : null
+  const isMe = single === app.me
+  const who = viewLabel(app)
+  const plural = !single
+  const whose = app.viewingAll ? 'everyone’s' : `${who}’s`
   const t = isMe
     ? { putIn: 'What I’ve put in', owes: 'LLC owes me', vs: 'Vs my share of costs', projects: 'My projects', ledger: 'Open my ledger ↗', pocket: 'paid from my pocket', paidPersonally: 'For receipts I paid personally',
         over: 'I’ve covered more than my share', back: 'Put in + my profit share', behind: 'Behind my share' }
-    : { putIn: `What ${who} has put in`, owes: `LLC owes ${who}`, vs: `Vs ${who}’s share of costs`, projects: `${who}’s projects`, ledger: `Open ${who}’s ledger ↗`, pocket: 'paid personally', paidPersonally: `For receipts ${who} paid personally`,
-        over: `${who} has covered more than their share`, back: `Put in + ${who}’s profit share`, behind: `Behind ${who}’s share` }
+    : { putIn: app.viewingAll ? 'What all partners have put in' : `What ${who} ${plural ? 'have' : 'has'} put in`, owes: `LLC owes ${app.viewingAll ? 'partners' : who}`,
+        vs: `Vs ${whose} share of costs`, projects: app.viewingAll ? 'All partners’ projects' : `${whose[0].toUpperCase()}${whose.slice(1)} projects`,
+        ledger: single ? `Open ${who}’s ledger ↗` : 'Open partners ↗', pocket: 'paid personally', paidPersonally: `For receipts ${app.viewingAll ? 'partners' : who} paid personally`,
+        over: plural ? 'Covered more than their share' : `${who} has covered more than their share`, back: `Put in + ${whose} profit share`, behind: `Behind ${whose} share` }
+  const ledgerTo = single ? `/partners/${single}` : '/partners'
   const pool = poolSummary(l, null)
-  const mine = pool.partners.find((p) => p.member.user_id === me)
-  const bal = l.partnerBalance(me)
+  const picked = pool.partners.filter((p) => ids.includes(p.member.user_id))
+  const sum = (f: (p: (typeof picked)[number]) => number) => picked.reduce((a, p) => a + f(p), 0)
+  const mine = picked.length ? { put_in_cents: sum((p) => p.put_in_cents), contributed_cents: sum((p) => p.contributed_cents), paid_personally_cents: sum((p) => p.paid_personally_cents),
+    reimbursed_cents: sum((p) => p.reimbursed_cents), over_share_cents: sum((p) => p.over_share_cents) } : undefined
+  const bals = ids.map((id) => l.partnerBalance(id))
+  const bal = { owed_cents: bals.reduce((a, b) => a + b.owed_cents, 0), pending_reimbursement_cents: bals.reduce((a, b) => a + b.pending_reimbursement_cents, 0), distributions_cents: bals.reduce((a, b) => a + b.distributions_cents, 0) }
   const projects = [...l.s.projects].sort((a, b) => Number(!isActiveProject(a)) - Number(!isActiveProject(b)) || a.nickname.localeCompare(b.nickname))
-  const stakes = projects.map((p) => ({ p, s: myStake(l, me, p) }))
-  // Everything I put in comes back first, plus my profit share on each project, less what's already been paid out to me.
+  const stakes = projects.map((p) => ({ p, s: groupStake(l, ids, p) }))
+  // Everything put in comes back first, plus the profit share on each project, less what's already been paid out.
   const expected = Math.max((mine?.put_in_cents ?? 0) + stakes.reduce((a, { s }) => a + (s.my_profit_cents ?? 0), 0) - bal.distributions_cents, 0)
   const list = todos(app)
   const top = list[0]
@@ -95,7 +117,6 @@ export function HomePage() {
           <h1>{greeting()}, {firstName(name)}</h1>
           <div className="sub">{new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}{app.lastSynced ? ` · updated ${app.lastSynced.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` : ''}</div>
         </div>
-        <ViewPartnerSelect />
         <button className="btn" onClick={() => app.reload()} disabled={app.syncing} aria-label="Refresh"><Icon name="refresh" /></button>
         <Link className="btn primary" to="/review">Open weekly review ↗</Link>
       </div>
@@ -112,11 +133,11 @@ export function HomePage() {
           </>
         ) : (<><div className="kicker">All caught up</div><div className="side-title">Nothing needs you</div><div className="side-sub">New bills and requests show up here.</div></>)}>
         <div className="hero-foot">{fmt(mine?.contributed_cents ?? 0)} to the LLC account · {fmt(mine?.paid_personally_cents ?? 0)} {t.pocket}{mine?.reimbursed_cents ? ` · ${fmt(mine.reimbursed_cents)} paid back` : ''}</div>
-        <Link className="hero-link" to={`/partners/${me}`}>{t.ledger}</Link>
+        <Link className="hero-link" to={ledgerTo}>{t.ledger}</Link>
       </Hero>
 
       <StatStrip items={[
-        { label: t.owes, value: Money.format(bal.owed_cents), note: bal.pending_reimbursement_cents ? `${fmt(bal.pending_reimbursement_cents)} requested` : t.paidPersonally, to: `/partners/${me}` },
+        { label: t.owes, value: Money.format(bal.owed_cents), note: bal.pending_reimbursement_cents ? `${fmt(bal.pending_reimbursement_cents)} requested` : t.paidPersonally, to: ledgerTo },
         { label: t.vs, value: `${over > 0 ? '+' : ''}${Money.format(over)}`, tone: over < 0 ? 'bad' : over > 0 ? 'good' : undefined, note: over > 0 ? t.over : over < 0 ? t.behind : 'Even with partners', to: '/partners' },
         { label: 'Expected back', value: Money.format(expected), tone: 'good', note: bal.distributions_cents ? `${fmt(bal.distributions_cents)} already paid out` : t.back },
         { label: 'LLC cash due, 30 days', value: Money.format(plan.total_cents), tone: plan.shortfall ? 'bad' : undefined, note: plan.shortfall ? `Short ${fmt(plan.shortfall.short_by_cents)} by ${shortDay(plan.shortfall.date)}` : 'Covered by the LLC account', to: '/cash' },
@@ -152,7 +173,7 @@ export function HomePage() {
         </Section>
         <Section title="Partner balances" action={<Link to="/partners" className="small bold">View partners ↗</Link>}>
           {pool.partners.map((p) => (
-            <Link key={p.member.user_id} className={`item ${p.member.user_id === me ? 'me' : ''}`} to={`/partners/${p.member.user_id}`}>
+            <Link key={p.member.user_id} className={`item ${ids.includes(p.member.user_id) ? 'me' : ''}`} to={`/partners/${p.member.user_id}`}>
               <span className="avatar sm">{initials(p.member.display_name)}</span>
               <span className="grow"><div className="title">{p.member.display_name}{p.member.user_id === app.me ? ' · me' : ''}</div><div className="subtitle num">Put in {fmt(p.put_in_cents)} · owed {fmt(l.partnerBalance(p.member.user_id).owed_cents)}</div></span>
               <span className="right"><div className={`bold num ${p.over_share_cents < 0 ? 'bad' : p.over_share_cents > 0 ? 'good' : ''}`}>{p.over_share_cents > 0 ? '+' : ''}{fmt(p.over_share_cents)}</div><div className="small muted">vs share</div></span>
@@ -180,12 +201,12 @@ export function StakeRow({ project: p, stake: s, other }: { project: Project; st
         {overCats > 0 ? <span className="badge warn">{overCats} categor{overCats === 1 ? 'y' : 'ies'} over</span> : <span className={`badge ${s.sold ? 'neutral' : 'good'}`}>{projectStatusLabel(p)}</span>}
       </div>
       <div className="stake-nums">
-        <div><div className="strip-label">{other ? `${other} put in` : 'I put in'}</div><div className="num bold">{fmt(s.put_in_cents)}</div></div>
+        <div><div className="strip-label">{other ? 'Put in' : 'I put in'}</div><div className="num bold">{fmt(s.put_in_cents)}</div></div>
         <div><div className="strip-label">{other ? 'Split' : 'My split'}</div><div className="num bold">{splitPct(s.share_bps)}</div></div>
-        <div><div className="strip-label">{s.sold ? (other ? `${other}’s profit` : 'My profit') : 'Est. profit'}</div><div className={`num bold ${(s.my_profit_cents ?? 0) < 0 ? 'bad' : 'good'}`}>{s.my_profit_cents == null ? '—' : fmt(s.my_profit_cents)}</div></div>
+        <div><div className="strip-label">{s.sold ? (other ? 'Profit' : 'My profit') : 'Est. profit'}</div><div className={`num bold ${(s.my_profit_cents ?? 0) < 0 ? 'bad' : 'good'}`}>{s.my_profit_cents == null ? '—' : fmt(s.my_profit_cents)}</div></div>
       </div>
       {s.sold ? (
-        <div className="small">{s.still_to_come_cents ? <span className="warn bold">{fmt(s.still_to_come_cents)} still to be paid to {other ?? 'me'}</span> : <span className="good bold">Paid out {fmt(s.paid_out_cents)}</span>}</div>
+        <div className="small">{s.still_to_come_cents ? <span className="warn bold">{fmt(s.still_to_come_cents)} still to be paid {other ? 'out' : 'to me'}</span> : <span className="good bold">Paid out {fmt(s.paid_out_cents)}</span>}</div>
       ) : (
         <>
           <div className="row small"><span className="muted">Projected spend</span><span className="spacer" /><span className="num bold">{fmt(t.projected_cents)}{t.budget_cents > 0 ? ` / ${fmt(t.budget_cents)}` : ''}</span></div>

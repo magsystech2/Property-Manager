@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { BrowserRouter, NavLink, Route, Routes, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { useStore, store } from './store'
 import { newDraft } from './drafts'
-import { Icon } from './ui/common'
+import { Icon, ViewPartnerSelect } from './ui/common'
 import { isActiveProject } from './core/models'
 import { Onboarding } from './pages/Onboarding'
 import { HomePage, BooksPage } from './pages/Home'
@@ -212,9 +212,11 @@ function Shell() {
           <NavLink to="/activity" className="mobile-icon" aria-label="Search records"><Icon name="search" /></NavLink>
           <NavLink to="/settings" className="avatar" aria-label="Settings">{initials(name || '?')}</NavLink>
         </header>
+        <div className="mobile-filter"><ViewPartnerSelect /></div>
         <div className="topbar">
           <span className="crumb">Workspace <span className="muted">/</span> {crumb}</span>
           <span className="spacer" />
+          <ViewPartnerSelect />
           <span className="live-dot">{app.isDemo ? 'Demo data' : 'Live'}</span>
           <TopSearch />
         </div>
