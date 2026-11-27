@@ -470,3 +470,27 @@ span.editing { display: inline-block; min-width: 180px; }
 td.editable:hover, td.editable:focus-visible, span.editable:hover, span.editable:focus-visible { background: var(--accent-soft); outline: 1px dashed var(--muted); outline-offset: -3px; }
 td.editing { padding: 4px 6px !important; }
 td.editing .edit-input, span.editing .edit-input { width: 100%; min-width: 90px; font: inherit; padding: 6px 8px; border: 1px solid var(--accent); border-radius: 6px; background: var(--surface); color: var(--text); text-align: inherit; }
+
+/* Help page */
+.help-icon { width: 30px; height: 30px; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center; color: #fff; flex-shrink: 0; }
+.help-word { padding: 11px 16px; }
+.help-word .k { flex: 0 0 150px; }
+.help-word .v { text-align: left; flex: 1; color: var(--muted); }
+.help-guide { max-width: 720px; }
+.help-intro { color: var(--muted); font-size: 16px; margin: 0; line-height: 1.5; }
+.help-steps { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 8px; }
+.help-step { display: flex; gap: 12px; align-items: flex-start; width: 100%; text-align: left; font: inherit; color: var(--text); line-height: 1.5;
+  background: var(--surface); border: 1.5px solid var(--border); border-radius: 12px; padding: 12px 14px; cursor: pointer; }
+.help-step:hover { background: var(--surface-2); }
+.help-step.on { background: var(--surface-2); }
+.help-num { flex-shrink: 0; width: 26px; height: 26px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center;
+  font-weight: 700; font-size: 13px; background: var(--surface-2); color: var(--text); border: 1px solid var(--border); }
+.help-step.on .help-num { color: #fff; border-color: transparent; }
+.help-tip { line-height: 1.5; }
+.help-go { align-self: flex-start; }
+.help-next .small { white-space: nowrap; }
+@media (max-width: 640px) {
+  .help-word { flex-direction: column; gap: 2px; }
+  .help-word .k { flex: none; }
+  .help-go { align-self: stretch; }
+}

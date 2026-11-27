@@ -22,6 +22,7 @@ import { RecurringPage, ReportsPage, dueTemplates } from './pages/Reports'
 import { ModalHost } from './forms/ModalHost'
 import { IssuesPage } from './pages/Issues'
 import { NeedsReviewPage } from './pages/NeedsReview'
+import { HelpPage, GuidePage } from './pages/Help'
 
 export default function App() {
   const app = useStore()
@@ -115,7 +116,7 @@ function TopSearch() {
 const crumbs: [RegExp, string][] = [
   [/^\/$/, 'Overview'], [/^\/projects\/./, 'Projects / Project'], [/^\/projects/, 'Projects'], [/^\/partners\/./, 'Partners / Partner'], [/^\/partners/, 'Partners'],
   [/^\/activity|^\/records/, 'Activity'], [/^\/review/, 'Finance / Weekly review'], [/^\/needs-review/, 'Finance / Needs review'], [/^\/inbox/, 'Finance / Receipt inbox'], [/^\/statements/, 'Finance / Statements'],
-  [/^\/cash/, 'Finance / Cash plan'], [/^\/reports/, 'Finance / Reports'], [/^\/books/, 'More tools'], [/^\/settings/, 'Settings'],
+  [/^\/cash/, 'Finance / Cash plan'], [/^\/reports/, 'Finance / Reports'], [/^\/books/, 'More tools'], [/^\/settings/, 'Settings'], [/^\/help/, 'Help'],
 ]
 const initials = (s: string) => s.split(/\s+/).map((w) => w[0]).join('').slice(0, 2).toUpperCase()
 
@@ -168,6 +169,7 @@ function Shell() {
           <NavLink to="/issues" className="nav-link"><Icon name="alert" />Issues{count(issueCount)}</NavLink>
           {app.draftList.length > 0 && <NavLink to="/drafts" className="nav-link"><Icon name="tray" />Drafts ({app.draftList.length})</NavLink>}
         </details>
+        <NavLink to="/help" className="nav-link"><Icon name="help" />Help</NavLink>
         <span className="spacer" />
         <NavLink to="/settings" className="me-row">
           <span className="avatar">{initials(name || '?')}</span>
@@ -190,6 +192,7 @@ function Shell() {
         <header className="mobile-head">
           <span className="logo"><Icon name="list" size={16} /></span>
           <span style={{ flex: 1, minWidth: 0 }}><div className="brand">Project Ledger</div><div className="brand-sub">{app.workspace?.name}</div></span>
+          <NavLink to="/help" className="mobile-icon" aria-label="Help"><Icon name="help" /></NavLink>
           <NavLink to="/activity" className="mobile-icon" aria-label="Search records"><Icon name="search" /></NavLink>
           <NavLink to="/settings" className="avatar" aria-label="Settings">{initials(name || '?')}</NavLink>
         </header>
@@ -225,6 +228,8 @@ function Shell() {
             <Route path="/issues" element={<IssuesPage />} />
             <Route path="/needs-review" element={<NeedsReviewPage />} />
             <Route path="/books" element={<BooksPage />} />
+            <Route path="/help" element={<HelpPage />} />
+            <Route path="/help/:id" element={<GuidePage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </main>

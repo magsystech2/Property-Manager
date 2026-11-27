@@ -35,6 +35,7 @@ const paths: Record<string, string> = {
   chevron: 'M9 18l6-6-6-6',
   tray: 'M22 12h-6l-2 3h-4l-2-3H2M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z',
   store: 'M3 9l1.5-5h15L21 9M3 9v11h18V9M3 9h18M9 20v-6h6v6',
+  help: 'M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20zM9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3M12 17h.01',
   refresh: 'M21 12a9 9 0 1 1-3-6.7L21 8M21 3v5h-5',
 }
 export function Icon({ name, size = 18 }: { name: keyof typeof paths | string; size?: number }) {
