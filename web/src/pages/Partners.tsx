@@ -1,7 +1,7 @@
 import { profitShares } from '../core/settlement'
 import { Link, useParams } from 'react-router-dom'
 import { useStore } from '../store'
-import { Days, Money } from '../core/money'
+import { Days, Money, splitPct } from '../core/money'
 import { EntryList, Icon, MoneyKV, MoneyText, PageHead, Section, recordPath } from '../ui/common'
 import { recordsLink } from './Activity'
 import { MoneyAtAGlance } from '../ui/Glance'
@@ -10,7 +10,7 @@ export function PartnersPage() {
   const app = useStore()
   const balances = app.ledger.partnerBalances()
   const split = profitShares(app.ledger, null)
-  const splitText = split.source === 'equal' ? 'Equal' : split.shares.map((x) => `${app.ledger.payerName(x.partner_user_id)} ${x.share_bps / 100}%`).join(', ')
+  const splitText = split.source === 'equal' ? 'Equal' : split.shares.map((x) => `${app.ledger.payerName(x.partner_user_id)} ${splitPct(x.share_bps)}`).join(', ')
   return (
     <div className="stack">
       <PageHead title="Partners" sub="Who paid what, each partner’s share, and what was borrowed. Every number comes from recorded transactions." />

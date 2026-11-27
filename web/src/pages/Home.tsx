@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom'
 import { useStore } from '../store'
 import { ReviewAlert } from '../ui/ReviewAlert'
-import { Money, type Cents } from '../core/money'
+import { Money, type Cents, splitPct } from '../core/money'
 import { isActiveProject, projectTypeLabel, projectStatusLabel, type Project } from '../core/models'
 import { EntryList, Hero, Icon, Section, StatStrip, Tile } from '../ui/common'
 import { recordsLink } from './Activity'
@@ -171,7 +171,7 @@ export function StakeRow({ project: p, stake: s }: { project: Project; stake: Re
       </div>
       <div className="stake-nums">
         <div><div className="strip-label">I put in</div><div className="num bold">{fmt(s.put_in_cents)}</div></div>
-        <div><div className="strip-label">My split</div><div className="num bold">{s.share_bps / 100}%</div></div>
+        <div><div className="strip-label">My split</div><div className="num bold">{splitPct(s.share_bps)}</div></div>
         <div><div className="strip-label">{s.sold ? 'My profit' : 'Est. profit'}</div><div className={`num bold ${(s.my_profit_cents ?? 0) < 0 ? 'bad' : 'good'}`}>{s.my_profit_cents == null ? '—' : fmt(s.my_profit_cents)}</div></div>
       </div>
       {s.sold ? (

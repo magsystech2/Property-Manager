@@ -116,3 +116,11 @@ export function uuid(): string {
   const h = [...b].map((x) => x.toString(16).padStart(2, '0')).join('')
   return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`
 }
+
+/** A split in basis points as a percent. Exact thirds are stored as 3334/3333/3333 (the extra point only decides who
+ * gets a leftover cent), so they all read 33.33%; likewise two thirds reads 66.67%. */
+export function splitPct(bps: number): string {
+  if (bps === 3334) bps = 3333
+  if (bps === 6666) bps = 6667
+  return `${bps / 100}%`
+}
