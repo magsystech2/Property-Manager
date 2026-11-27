@@ -1,7 +1,7 @@
-import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useStore } from '../store'
 import { Icon, PageHead, Section } from '../ui/common'
+import { TutorialPlayer } from '../ui/Tutorials'
 
 /** A short how-to: what it's for, its steps, a tip, and a button to the page it's about. */
 type Guide = {
@@ -167,8 +167,8 @@ export function HelpPage() {
   const app = useStore()
   return (
     <div className="stack">
-      <PageHead title="Help" sub="Short guides to using Project Ledger. Open one to see its steps." />
-      <Section title="How to" footer="Each guide has a few steps. Click a step to highlight it, and use the button at the bottom to go straight to that page.">
+      <PageHead title="Help" sub="Short animated guides to using Project Ledger. Open one to watch it." />
+      <Section title="How to" footer="Each guide plays a short animation of its steps. Click a step to see it again, or press Pause to stop on it.">
         {guides.map((g) => (
           <Link key={g.id} className="item" to={`/help/${g.id}`}>
             <GuideIcon g={g} />
@@ -202,7 +202,6 @@ export function GuidePage() {
   const { id } = useParams()
   const go = useNavigate()
   const g = guides.find((x) => x.id === id)
-  const [active, setActive] = useState<number | null>(null)
   if (!g) return <div className="stack"><PageHead title="Guide not found" back="/help" /></div>
   const i = guides.indexOf(g)
   const next = guides[i + 1]
@@ -210,17 +209,7 @@ export function GuidePage() {
     <div className="stack help-guide">
       <PageHead title={<span className="row" style={{ gap: 12 }}><GuideIcon g={g} />{g.title}</span>} back="/help" />
       <p className="help-intro">{g.intro}</p>
-      <ol className="help-steps">
-        {g.steps.map((s, n) => (
-          <li key={n}>
-            <button type="button" className={`help-step ${active === n ? 'on' : ''}`} style={active === n ? { borderColor: g.tint } : undefined}
-              onClick={() => setActive(active === n ? null : n)} aria-pressed={active === n}>
-              <span className="help-num" style={{ background: active === n ? g.tint : undefined }}>{n + 1}</span>
-              <span>{s}</span>
-            </button>
-          </li>
-        ))}
-      </ol>
+      <TutorialPlayer scene={g.id} steps={g.steps} tint={g.tint} />
       {g.tip && <div className="callout info help-tip"><strong>Tip:</strong> {g.tip}</div>}
       {g.to && <button className="btn primary help-go" onClick={() => go(g.to!)}>{g.toTitle}</button>}
       {next && (
