@@ -3,6 +3,7 @@ import { BrowserRouter, NavLink, Route, Routes, Navigate, useLocation, useNaviga
 import { useStore, store } from './store'
 import { newDraft } from './drafts'
 import { Icon } from './ui/common'
+import { isActiveProject } from './core/models'
 import { Onboarding } from './pages/Onboarding'
 import { HomePage, BooksPage } from './pages/Home'
 import { ProjectsPage, ProjectDetailPage } from './pages/Projects'
@@ -134,6 +135,9 @@ function Shell() {
   const reviewCount = new Set(app.ledger.reviewFlags.map((r) => r.record_id)).size
   const booksCount = inboxCount + unmatchedCount + dueCount + issueCount + reviewCount
   const moreCount = dueCount + issueCount
+  // Projects listed under Projects in the sidebar: active ones first, newest first, then sold ones.
+  const sideProjects = [...app.ledger.s.projects].sort((a, b) =>
+    Number(isActiveProject(b)) - Number(isActiveProject(a)) || (b.start_date ?? '').localeCompare(a.start_date ?? '') || a.nickname.localeCompare(b.nickname))
   const count = (n: number) => n ? <span className="nav-count">{n}</span> : null
   const crumb = crumbs.find(([re]) => re.test(loc.pathname))?.[1] ?? ''
   const name = app.myMember?.display_name ?? app.backend?.userEmail() ?? ''
@@ -150,7 +154,19 @@ function Shell() {
         </div>
         <div className="nav-group">Workspace</div>
         <NavLink to="/" end className="nav-link"><Icon name="home" />Overview</NavLink>
-        <NavLink to="/projects" className="nav-link"><Icon name="folder" />Projects</NavLink>
+        <NavLink to="/projects" end className="nav-link"><Icon name="folder" />Projects</NavLink>
+        {sideProjects.length > 0 && (
+          <div className="nav-sub">
+            {sideProjects.slice(0, 6).map((p) => (
+              <NavLink key={p.id} to={`/projects/${p.id}`} className="nav-link nav-sub-link" title={p.address || p.nickname}>
+                <span className={isActiveProject(p) ? 'nav-dot' : 'nav-dot sold'} />
+                <span className="nav-sub-name">{p.nickname}</span>
+                {!isActiveProject(p) && <span className="nav-sub-tag">Sold</span>}
+              </NavLink>
+            ))}
+            {sideProjects.length > 6 && <NavLink to="/projects" end className="nav-link nav-sub-link nav-sub-all">All {sideProjects.length} projects →</NavLink>}
+          </div>
+        )}
         <NavLink to="/activity" className="nav-link"><Icon name="list" />Activity</NavLink>
         <NavLink to="/partners" className="nav-link"><Icon name="users" />Partners</NavLink>
         <div className="nav-group">Finance</div>
