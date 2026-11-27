@@ -162,7 +162,8 @@ export function settlement(l: Ledger, pid: string): Settlement {
   for (const d of l.s.distributions) if (d.project_id === pid && d.status !== 'void') ids.add(d.partner_user_id)
   const people = [...ids].map((uid) => ({ uid, bps: shares.find((x) => x.partner_user_id === uid)?.share_bps ?? 0 }))
     .sort((a, b) => b.bps - a.bps || l.payerName(a.uid).localeCompare(l.payerName(b.uid)))
-  const profitParts = allocate(profit, people.map((x) => x.bps))
+  // Equal split: divide exactly by head count (33.34/33.33/33.33% bps would put extra dollars on one partner).
+  const profitParts = allocate(profit, people.map((x) => (source === 'equal' ? (x.bps ? 1 : 0) : x.bps)))
   const firstSale = returnsLLCCapital(l, pid)
   const partners = people.map(({ uid, bps }, i): PartnerPayout => {
     const b = l.partnerBalance(uid, pid)

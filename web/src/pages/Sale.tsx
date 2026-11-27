@@ -88,7 +88,7 @@ export function ProjectSale({ pid }: { pid: string }) {
           {st.partners.map((x) => (
             <div key={x.member.user_id} className="item" style={{ display: 'block' }}>
               <div className="row" style={{ gap: 8 }}>
-                <strong className="grow">{x.member.display_name} · {pct(x.share_bps)}</strong>
+                <strong className="grow">{x.member.display_name} · {st.share_source === 'equal' && x.share_bps ? 'equal share' : pct(x.share_bps)}</strong>
                 {st.sold && <MoneyText cents={x.remaining_cents} bold />}
               </div>
               {st.sold ? (

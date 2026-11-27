@@ -155,7 +155,8 @@ public extension Ledger {
         for d in s.distributions where d.projectId == pid && !d.isVoid { ids.insert(d.partnerUserId) }
         let people = ids.map { uid in (uid: uid, bps: shares.first { $0.partnerUserId == uid }?.shareBps ?? 0) }
             .sorted { $0.bps != $1.bps ? $0.bps > $1.bps : payerName($0.uid).localizedCompare(payerName($1.uid)) == .orderedAscending }
-        let parts = Settlements.allocate(profit, bps: people.map(\.bps))
+        // Equal split: divide exactly by head count (33.34/33.33/33.33% bps would put extra dollars on one partner).
+        let parts = Settlements.allocate(profit, bps: people.map { source == .equal ? ($0.bps > 0 ? 1 : 0) : $0.bps })
         let firstSale = returnsLLCCapital(project: pid)
         let partners = people.enumerated().map { i, p -> PartnerPayout in
             let b = partnerBalance(p.uid, project: pid)

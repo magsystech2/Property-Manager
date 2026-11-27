@@ -71,6 +71,22 @@ describe('cost basis and settlement', () => {
   })
 })
 
+describe('equal split', () => {
+  it('splits a profit or loss exactly by thirds when no split is set', () => {
+    const s = snap()
+    s.profit_shares = []
+    const oak = oakId(s)
+    const costs = new Ledger(s, today).totals(oak).projected_cents
+    s.proceeds.push({ id: 'sale', workspace_id: s.workspace.id, project_id: oak, amount_cents: costs - 600_000, sale_date: today, notes: '',
+      status: 'posted', gross_price_cents: null, selling_costs_cents: null, loan_payoff_cents: 0 })
+    const st = settlement(new Ledger(s, today), oak)
+    expect(st.share_source).toBe('equal')
+    const n = st.partners.filter((p) => p.share_bps > 0).length
+    for (const p of st.partners.filter((x) => x.share_bps > 0)) expect(Math.abs(p.profit_share_cents * n + 600_000)).toBeLessThanOrEqual(n)
+    expect(st.partners.reduce((a, p) => a + p.profit_share_cents, 0)).toBe(-600_000)
+  })
+})
+
 describe('repeats', () => {
   it('keeps the day of the month and clamps short months', () => {
     expect(advance('2026-01-31', 'monthly')).toBe('2026-02-28')
