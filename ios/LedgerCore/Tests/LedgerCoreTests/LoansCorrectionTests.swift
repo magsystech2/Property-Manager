@@ -19,7 +19,9 @@ final class LoansCorrectionTests: XCTestCase {
     func testInterestPaidAndPrincipalRepayment() {
         let l = loan
         let s = Loans.status(l, payments: [pay(l, "2025-07-02", 200_000, "interest"), pay(l, "2025-07-02", 2_500_000, "principal")], today: "2026-01-01")
-        XCTAssertEqual(s.interestAccruedCents, Int((5_000_000 * 0.1 * 182 / 365 + 2_500_000 * 0.1 * 183 / 365).rounded()))
+        let before: Double = 5_000_000.0 * 0.1 * 182.0 / 365.0
+        let after: Double = 2_500_000.0 * 0.1 * 183.0 / 365.0
+        XCTAssertEqual(s.interestAccruedCents, Int((before + after).rounded()))
         XCTAssertEqual(s.interestPaidCents, 200_000)
         XCTAssertEqual(s.principalLeftCents, 2_500_000)
     }
