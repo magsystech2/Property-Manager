@@ -3,7 +3,7 @@ import { useStore } from '../store'
 import { Money, type Cents } from '../core/money'
 import { poolSummary } from '../core/settlement'
 import type { Ledger } from '../core/ledger'
-import { Section, StatStrip } from './common'
+import { Section, StatStrip, EditCell } from './common'
 import { Days } from '../core/money'
 import { loanStatus } from '../core/loans'
 
@@ -106,6 +106,9 @@ function BorrowedSection({ projectId }: { projectId: string | null }) {
   const sum = (k: 'principal_cents' | 'interest_accrued_cents' | 'interest_paid_cents' | 'principal_repaid_cents' | 'owed_now_cents' | 'monthly_interest_cents') =>
     rows.reduce((a, r) => a + (k === 'principal_cents' ? r.loan.principal_cents : r[k]), 0)
   const open = (loan?: typeof rows[number]['loan']) => app.open({ type: 'loan', loan: loan ?? null, projectId })
+  type Loan = typeof rows[number]['loan']
+  const edit = (loan: Loan, patch: Partial<Loan>) => app.saveLoan({ ...loan, ...patch })
+  const projectOptions: [string, string][] = [['', 'LLC-wide (no project)'], ...l.s.projects.map((p): [string, string] => [p.id, p.nickname])]
   return (
     <Section title="Borrowed money" plain action={<button className="btn" onClick={() => open()}>+ Add loan</button>}>
       {rows.length === 0 ? <div className="empty" style={{ borderTop: '2px solid var(--ink)' }}>No personal loans recorded{projectId ? ' for this project' : ''}. Add one when a partner borrows to fund their part.</div> : (
@@ -117,11 +120,14 @@ function BorrowedSection({ projectId }: { projectId: string | null }) {
                 {rows.map((r) => (
                   <tr key={r.loan.id} className="clickable" onClick={() => open(r.loan)}>
                     <td className="bold">{l.payerName(r.loan.partner_user_id)}</td>
-                    <td>{r.loan.lender}{r.loan.status === 'closed' ? <span className="badge neutral" style={{ marginLeft: 6 }}>Paid off</span> : null}</td>
-                    <td>{l.project(r.loan.project_id)?.nickname ?? 'LLC'}</td>
-                    <td className="num">{Days.display(r.loan.start_date)}</td>
-                    <td className="num">{f(r.loan.principal_cents)}</td>
-                    <td className="num">{r.loan.rate_bps / 100}%</td>
+                    <EditCell value={r.loan.lender} display={<>{r.loan.lender}{r.loan.status === 'closed' ? <span className="badge neutral" style={{ marginLeft: 6 }}>Paid off</span> : null}</>}
+                      onSave={(v) => !!String(v ?? '').trim() && edit(r.loan, { lender: String(v).trim() })} />
+                    <EditCell kind="select" value={r.loan.project_id ?? ''} display={l.project(r.loan.project_id)?.nickname ?? 'LLC'} options={projectOptions}
+                      onSave={(v) => edit(r.loan, { project_id: v ? String(v) : null })} />
+                    <EditCell kind="date" className="num" value={r.loan.start_date} display={Days.display(r.loan.start_date)} onSave={(v) => edit(r.loan, { start_date: String(v) })} />
+                    <EditCell kind="money" className="num" value={r.loan.principal_cents} display={f(r.loan.principal_cents)}
+                      onSave={(v) => Number(v) > 0 && edit(r.loan, { principal_cents: Number(v) })} />
+                    <EditCell kind="percent" className="num" value={r.loan.rate_bps} display={`${r.loan.rate_bps / 100}%`} onSave={(v) => edit(r.loan, { rate_bps: Number(v) })} />
                     <td className="num">{f(r.interest_accrued_cents)}</td>
                     <td className="num">{f(r.interest_paid_cents)}</td>
                     <td className="num">{f(r.principal_repaid_cents)}</td>
@@ -150,7 +156,7 @@ function BorrowedSection({ projectId }: { projectId: string | null }) {
           </div>
         </>
       )}
-      <div className="section-foot">For reference only: this money is already counted as the partner’s contribution or personal payment above, so loans don’t change anyone’s balance or payout. Interest is simple yearly interest from the date borrowed; tap a loan to record interest or principal payments.</div>
+      <div className="section-foot">For reference only: this money is already counted as the partner’s contribution or personal payment above, so loans don’t change anyone’s balance or payout. Interest is simple yearly interest from the date borrowed. Click a lender, project, date, amount or rate to change it in place; click the partner name to record interest or principal payments.</div>
     </Section>
   )
 }

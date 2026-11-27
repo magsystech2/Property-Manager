@@ -6,6 +6,7 @@ import {
   type Snapshot, type Allocation, type BillPayment, type Project, type Vendor, type BudgetCategory, type Member,
   type Bill, type Expense, type Commitment, type Attachment, type Entry, type EntryRef, type StatusLabel, type EntryKind,
   RecordStatus, signedCents, paidEffect, outstandingEffect, paymentKindLabel, isActiveProject, isPaidR, isPendingR, refKey,
+  isReviewFlag,
 } from './models'
 
 export interface BillBalance { total_cents: Cents; credits_cents: Cents; paid_cents: Cents; outstanding_cents: Cents; billed_cents: Cents }
@@ -137,6 +138,12 @@ export class Ledger {
   category(id?: string | null) { return id ? this.categoriesById.get(id) : undefined }
   member(id?: string | null) { return id ? this.membersById.get(id) : undefined }
   bill(id?: string | null) { return id ? this.billsById.get(id) : undefined }
+  /** Open "needs review" flags, newest first. */
+  get reviewFlags() { return (this.s.issue_reports ?? []).filter((r) => r.status === 'open' && isReviewFlag(r)).sort((a, b) => (b.created_at ?? '').localeCompare(a.created_at ?? '')) }
+  /** Open review flags on one record. */
+  reviewFlagsFor(ref: EntryRef) { return this.reviewFlags.filter((r) => r.record_kind === ref.kind && r.record_id === ref.id) }
+  /** Open issue reports that are not review flags. */
+  get openIssues() { return (this.s.issue_reports ?? []).filter((r) => r.status === 'open' && !isReviewFlag(r)) }
   payerName(id?: string | null) { return id == null ? 'LLC account' : (this.member(id)?.display_name ?? 'Former partner') }
   allocationsForBill(id: string) { return this.allocationsByBill.get(id) ?? [] }
   allocationsForExpense(id: string) { return this.allocationsByExpense.get(id) ?? [] }

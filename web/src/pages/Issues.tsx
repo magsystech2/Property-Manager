@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useStore } from '../store'
 import { Days, Money } from '../core/money'
-import { issueCategoryLabel, kindLabel, type EntryRef, type IssueReport } from '../core/models'
+import { isReviewFlag, issueCategoryLabel, kindLabel, type EntryRef, type IssueReport } from '../core/models'
 import { Icon, PageHead, Section, Segmented, recordPath } from '../ui/common'
 import type { Ledger } from '../core/ledger'
 
@@ -31,7 +31,7 @@ export function IssuesPage() {
   const app = useStore()
   const l = app.ledger
   const [tab, setTab] = useState<'open' | 'resolved'>('open')
-  const all = l.s.issue_reports ?? []
+  const all = (l.s.issue_reports ?? []).filter((r) => !isReviewFlag(r))
   const open = all.filter((r) => r.status === 'open').sort((a, b) => (b.created_at ?? '').localeCompare(a.created_at ?? ''))
   const resolved = all.filter((r) => r.status !== 'open').sort((a, b) => (b.resolved_at ?? '').localeCompare(a.resolved_at ?? ''))
 

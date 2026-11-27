@@ -462,3 +462,11 @@ a.strip-cell:hover { background: var(--surface-2); text-decoration: none; }
 .table tr.clickable { cursor: pointer; }
 .table tr.clickable:hover td { background: var(--surface-2); }
 .plain-btn { display: block; width: 100%; text-align: left; background: none; border: 0; border-bottom: 1px solid var(--border); font: inherit; color: inherit; cursor: pointer; }
+
+/* Click-to-edit cells */
+td.editable, span.editable { cursor: text; }
+span.editable { display: inline-block; padding: 2px 6px; margin: -2px -6px; border-radius: 6px; }
+span.editing { display: inline-block; min-width: 180px; }
+td.editable:hover, td.editable:focus-visible, span.editable:hover, span.editable:focus-visible { background: var(--accent-soft); outline: 1px dashed var(--muted); outline-offset: -3px; }
+td.editing { padding: 4px 6px !important; }
+td.editing .edit-input, span.editing .edit-input { width: 100%; min-width: 90px; font: inherit; padding: 6px 8px; border: 1px solid var(--accent); border-radius: 6px; background: var(--surface); color: var(--text); text-align: inherit; }

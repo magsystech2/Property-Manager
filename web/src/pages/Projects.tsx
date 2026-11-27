@@ -5,7 +5,7 @@ import { useStore } from '../store'
 import { Days, Money, type Cents } from '../core/money'
 import { dedupe } from '../core/ledger'
 import { isActiveProject, projectStatusLabel, projectTypeLabel, type EntryRef } from '../core/models'
-import { AttachmentRow, EntryList, Hero, Icon, StatStrip, KV, MoneyKV, MoneyText, PageHead, Section, Segmented, recordPath } from '../ui/common'
+import { AttachmentRow, EditCell, EntryList, Hero, Icon, StatStrip, KV, MoneyKV, MoneyText, PageHead, Section, Segmented, recordPath } from '../ui/common'
 import { StakeRow, myStake } from './Home'
 import { MoneyAtAGlance } from '../ui/Glance'
 import { ProjectForecast } from './Forecast'
@@ -169,7 +169,7 @@ function Budget({ pid }: { pid: string }) {
   return (
     <div className="stack">
       <div className="row">
-        <span className="note">Projected = paid + unpaid billed + committed not billed. Click an amount to see the records behind it.</span>
+        <span className="note">Projected = paid + unpaid billed + committed not billed. Click a budget figure to change it; click any other amount to see the records behind it.</span>
         <span className="spacer" />
         <button className="btn" onClick={() => app.open({ type: 'budget', projectId: pid })}>Edit budget by category</button>
       </div>
@@ -193,7 +193,10 @@ function Budget({ pid }: { pid: string }) {
               return (
                 <tr key={x.category_id} style={{ borderBottom: '1px solid var(--border)' }}>
                   <td style={{ padding: '10px 12px', fontWeight: 600, fontVariantNumeric: 'normal' }}>{x.name}</td>
-                  <td style={{ padding: '10px 12px', textAlign: 'right' }}>{Money.format(x.budget_cents)}</td>
+                  {l.category(x.category_id)
+                    ? <EditCell kind="money" style={{ padding: '10px 12px', textAlign: 'right' }} value={x.budget_cents} display={Money.format(x.budget_cents)} title="Click to change this category's budget"
+                        onSave={(v) => app.saveBudgets([{ workspace_id: app.workspace!.id, project_id: pid, category_id: x.category_id, amount_cents: Number(v) }])} />
+                    : <td style={{ padding: '10px 12px', textAlign: 'right' }}>{Money.format(x.budget_cents)}</td>}
                   {cell(x.paid_cents, x.sources.filter((r) => r.kind === 'expense' || r.kind === 'payment'), 'paid')}
                   {cell(x.unpaid_billed_cents, x.sources.filter((r) => r.kind === 'bill'), 'unpaid billed')}
                   {cell(x.unbilled_committed_cents, x.sources.filter((r) => r.kind === 'commitment'), 'committed, not billed')}

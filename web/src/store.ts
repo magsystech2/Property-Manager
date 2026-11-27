@@ -2,7 +2,8 @@
 import { useSyncExternalStore } from 'react'
 import { Ledger } from './core/ledger'
 import { Rules, LedgerError } from './core/rules'
-import { uuid, Money } from './core/money'
+import { uuid, Money, Days } from './core/money'
+import { buildCorrection, correctionBlocker, type CorrectionPatch } from './core/correction'
 import { emptySnapshot, type Snapshot, type Workspace, type EntryRef, type Project, type Vendor, type ProjectBudget,
   type BudgetCategory, type Member, type Invite, type Expense, type Bill, type Attachment , type InboxItem, type StatementLine, type Claim, type ClaimKind, type ScheduledDraw, type EntryTemplate, type Material, type IssueReport, type IssueCategory, type PartnerLoan, type PartnerLoanPayment } from './core/models'
 import type { Backend, NewRecord, StatusChange } from './backend/types'
@@ -45,7 +46,7 @@ export type Modal =
   | { type: 'void'; ref: EntryRef }
   | { type: 'markPaid'; ref: EntryRef }
   | { type: 'attach'; target: AttachTarget }
-  | { type: 'report'; ref?: EntryRef | null; error?: string | null }
+  | { type: 'report'; ref?: EntryRef | null; error?: string | null; review?: boolean }
   | { type: 'loan'; loan?: PartnerLoan | null; projectId?: string | null }
 
 function safeName(name: string) {
@@ -402,11 +403,12 @@ export class AppStore {
         status: 'open', client_id: id,
       })
     })
-    if (ok) { this.showToast('Report sent. It’s in Issues for any partner to pick up.'); await this.reload(true) }
+    if (ok) { this.showToast(input.category === 'needs_review' ? 'Marked as needs review' : 'Report sent. It’s in Issues for any partner to pick up.'); await this.reload(true) }
     return ok
   }
   resolveIssue(r: IssueReport, resolution: string) { return this.simple((b) => b.setIssueStatus(r.id, 'resolved', resolution), 'Marked resolved') }
   reopenIssue(r: IssueReport) { return this.simple((b) => b.setIssueStatus(r.id, 'open'), 'Reopened') }
+  markReviewed(r: IssueReport, note: string) { return this.simple((b) => b.setIssueStatus(r.id, 'resolved', note.trim() || 'Reviewed'), 'Marked reviewed') }
 
   // --- Receipt inbox
   async addToInbox(files: File[], note: string): Promise<boolean> {
@@ -543,6 +545,74 @@ export class AppStore {
     return d
   }
   /** "Add again": a new draft copying a receipt or bill (vendor, project, amount, categories, payer), dated today. */
+  /** Why a receipt or bill can't be corrected in place (null = it can). */
+  correctionBlocker(ref: EntryRef): string | null {
+    const s = this.snapshot
+    if (!s) return 'Not loaded'
+    const e = ref.kind === 'expense' ? s.expenses.find((x) => x.id === ref.id) : undefined
+    const b = ref.kind === 'bill' ? s.bills.find((x) => x.id === ref.id) : undefined
+    if (e) return correctionBlocker(s, { kind: 'expense', row: e })
+    if (b) return correctionBlocker(s, { kind: 'bill', row: b })
+    return 'Only receipts and bills can be corrected in place.'
+  }
+
+  /**
+   * Correct a posted receipt or bill: post a fixed copy (same documents and bank match), then void the original
+   * with a reason that says what changed. Returns the new record's ref, or null if nothing changed or it failed.
+   */
+  async correct(ref: EntryRef, patch: CorrectionPatch): Promise<EntryRef | null> {
+    const b = this.backend, s = this.snapshot, l = this.ledger
+    if (!b || !s) return null
+    const blocker = this.correctionBlocker(ref)
+    if (blocker) { this.showError(new LedgerError(blocker)); return null }
+    const old = ref.kind === 'expense' ? s.expenses.find((x) => x.id === ref.id)! : s.bills.find((x) => x.id === ref.id)!
+    const allocs = s.allocations.filter((a) => (ref.kind === 'expense' ? a.expense_id === ref.id : a.bill_id === ref.id))
+    const newId = uuid()
+    let c: ReturnType<typeof buildCorrection<typeof old>>
+    try {
+      c = buildCorrection(old, allocs, patch, newId, {
+        vendor: (id) => l.vendor(id)?.name ?? 'vendor', project: (id) => l.project(id)?.nickname ?? 'project',
+        payer: (id) => l.payerName(id), category: (id) => l.category(id)?.name ?? 'category',
+      })
+    } catch (e) { this.showError(e); return null }
+    if (!c.summary) return null
+    const newRef: EntryRef = { kind: ref.kind, id: newId }
+    const today = Days.display(Days.today)
+    c.row.notes = [`Corrected copy (${today}): ${c.summary}.`, old.notes ?? ''].filter(Boolean).join('\n')
+    const voidReason = `Corrected (${today}): ${c.summary}. Replaced by a corrected copy.`
+    const key = ref.kind === 'expense' ? 'expense_id' : 'bill_id'
+    // Check the copy against the rules first, as if the original were already void (its invoice # is then free).
+    try {
+      if (ref.kind === 'expense') Rules.checkExpense(c.row as typeof s.expenses[number], c.allocations)
+      else Rules.checkBill(c.row as typeof s.bills[number], c.allocations, new Ledger({ ...s, bills: s.bills.map((x) => (x.id === ref.id ? { ...x, status: 'void' } : x)) }))
+    } catch (e) { this.showError(e); return null }
+    const matches = ref.kind === 'expense' ? s.statement_matches.filter((x) => x.expense_id === ref.id) : []
+    const ok = await this.run(async () => {
+      for (const m of matches) await b.removeMatch(m.id)
+      // A bill's invoice # must be unique among live bills, so the original is voided first; a receipt's copy goes in first.
+      if (ref.kind === 'bill') { await b.change(ref, { type: 'void', reason: voidReason }); await b.postBill(c.row as typeof s.bills[number], c.allocations) }
+      else { await b.postExpense(c.row as typeof s.expenses[number], c.allocations); await b.change(ref, { type: 'void', reason: voidReason }) }
+      for (const a of s.attachments.filter((x) => x[key] === ref.id)) { const aid = uuid(); await b.addAttachment({ ...a, id: aid, client_id: aid, [key]: newId }) }
+    })
+    // Move the bank-statement match to the copy; if it no longer fits (amount changed, awaiting review), the line goes back to unmatched.
+    if (ok) for (const m of matches) {
+      try { await b.addMatch({ id: uuid(), workspace_id: m.workspace_id, statement_line_id: m.statement_line_id, expense_id: newId }) }
+      catch { await this.run(() => b.setStatementStatus(m.statement_line_id, 'unmatched')) }
+    }
+    if (!ok) { await this.reload(true); return null }
+    // Open "needs review" flags follow the record to its corrected copy.
+    for (const f of this.ledger.reviewFlagsFor(ref)) {
+      const fid = uuid()
+      await this.run(async () => {
+        await b.addIssueReport({ ...f, id: fid, client_id: fid, record_id: newId, status: 'open', resolution: null, resolved_by: null, resolved_at: null })
+        await b.setIssueStatus(f.id, 'resolved', 'Corrected; the flag moved to the corrected copy')
+      })
+    }
+    this.showToast('Corrected: the original is voided and a fixed copy is posted')
+    await this.reload(true)
+    return newRef
+  }
+
   againDraft(ref: EntryRef): TransactionDraft | null {
     const s = this.snapshot
     if (!s) return null

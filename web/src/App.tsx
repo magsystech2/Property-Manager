@@ -21,6 +21,7 @@ import { CashPage } from './pages/Cash'
 import { RecurringPage, ReportsPage, dueTemplates } from './pages/Reports'
 import { ModalHost } from './forms/ModalHost'
 import { IssuesPage } from './pages/Issues'
+import { NeedsReviewPage } from './pages/NeedsReview'
 
 export default function App() {
   const app = useStore()
@@ -113,7 +114,7 @@ function TopSearch() {
 
 const crumbs: [RegExp, string][] = [
   [/^\/$/, 'Overview'], [/^\/projects\/./, 'Projects / Project'], [/^\/projects/, 'Projects'], [/^\/partners\/./, 'Partners / Partner'], [/^\/partners/, 'Partners'],
-  [/^\/activity|^\/records/, 'Activity'], [/^\/review/, 'Finance / Weekly review'], [/^\/inbox/, 'Finance / Receipt inbox'], [/^\/statements/, 'Finance / Statements'],
+  [/^\/activity|^\/records/, 'Activity'], [/^\/review/, 'Finance / Weekly review'], [/^\/needs-review/, 'Finance / Needs review'], [/^\/inbox/, 'Finance / Receipt inbox'], [/^\/statements/, 'Finance / Statements'],
   [/^\/cash/, 'Finance / Cash plan'], [/^\/reports/, 'Finance / Reports'], [/^\/books/, 'More tools'], [/^\/settings/, 'Settings'],
 ]
 const initials = (s: string) => s.split(/\s+/).map((w) => w[0]).join('').slice(0, 2).toUpperCase()
@@ -128,8 +129,9 @@ function Shell() {
   const inboxCount = app.ledger.s.inbox_items.filter((i) => i.status === 'new').length
   const unmatchedCount = app.ledger.s.statement_lines.filter((x) => x.status === 'unmatched').length
   const dueCount = dueTemplates(app.ledger.s.entry_templates, app.ledger.today).length
-  const issueCount = (app.ledger.s.issue_reports ?? []).filter((r) => r.status === 'open').length
-  const booksCount = inboxCount + unmatchedCount + dueCount + issueCount
+  const issueCount = app.ledger.openIssues.length
+  const reviewCount = new Set(app.ledger.reviewFlags.map((r) => r.record_id)).size
+  const booksCount = inboxCount + unmatchedCount + dueCount + issueCount + reviewCount
   const moreCount = dueCount + issueCount
   const count = (n: number) => n ? <span className="nav-count">{n}</span> : null
   const crumb = crumbs.find(([re]) => re.test(loc.pathname))?.[1] ?? ''
@@ -152,6 +154,7 @@ function Shell() {
         <NavLink to="/partners" className="nav-link"><Icon name="users" />Partners</NavLink>
         <div className="nav-group">Finance</div>
         <NavLink to="/review" className="nav-link"><Icon name="check" />Weekly review</NavLink>
+        <NavLink to="/needs-review" className="nav-link"><Icon name="alert" />Needs review{count(reviewCount)}</NavLink>
         <NavLink to="/inbox" className="nav-link"><Icon name="tray" />Receipt inbox{count(inboxCount)}</NavLink>
         <NavLink to="/statements" className="nav-link"><Icon name="bank" />Statements{count(unmatchedCount)}</NavLink>
         <NavLink to="/cash" className="nav-link"><Icon name="cash" />Cash plan</NavLink>
@@ -220,6 +223,7 @@ function Shell() {
             <Route path="/reports" element={<ReportsPage />} />
             <Route path="/recurring" element={<RecurringPage />} />
             <Route path="/issues" element={<IssuesPage />} />
+            <Route path="/needs-review" element={<NeedsReviewPage />} />
             <Route path="/books" element={<BooksPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>

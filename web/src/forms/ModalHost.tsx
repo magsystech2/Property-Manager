@@ -2,7 +2,7 @@ import { DistributionForm, MaterialForm, SaleForm, SharesForm, TemplateForm } fr
 import { SplitLineForm, DrawForm } from './PlanningForms'
 import { useStore } from '../store'
 import { TransactionForm } from './TransactionForm'
-import { ReportForm } from './ReportForm'
+import { ReportForm, ReviewFlagForm } from './ReportForm'
 import { LoanForm } from './LoanForm'
 import {
   AttachForm, BudgetEditor, ChangeOrderForm, CommitmentForm, ContributionForm, MarkPaidForm, PaymentForm,
@@ -37,6 +37,6 @@ export function ModalHost() {
     case 'draw': return <DrawForm commitmentId={m.commitmentId} onClose={close} />
     case 'attach': return <AttachForm target={m.target} onClose={close} />
     case 'loan': return <LoanForm loan={m.loan} projectId={m.projectId} onClose={close} />
-    case 'report': return <ReportForm refx={m.ref} error={m.error} onClose={close} />
+    case 'report': return m.review && m.ref ? <ReviewFlagForm refx={m.ref} onClose={close} /> : <ReportForm refx={m.ref} error={m.error} onClose={close} />
   }
 }

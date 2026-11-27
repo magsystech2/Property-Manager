@@ -49,7 +49,9 @@ function todos(app: ReturnType<typeof useStore>): Todo[] {
   if (missing) out.push({ to: '/missing', kicker: 'Missing receipts', title: 'Missing receipts', sub: 'Assigned to you', amount: `${missing} receipt${missing === 1 ? '' : 's'}`, status: 'View records →', tone: 'warn' })
   const plan = cashPlan(l)
   if (plan.shortfall) out.push({ to: '/cash', kicker: 'Cash short', title: 'LLC account will run short', sub: `by ${shortDay(plan.shortfall.date)}`, amount: fmt(plan.shortfall.short_by_cents), status: 'Open cash plan', tone: 'bad' })
-  const openIssues = (l.s.issue_reports ?? []).filter((r) => r.status === 'open').length
+  const flagged = new Set(l.reviewFlags.map((r) => r.record_id)).size
+  if (flagged) out.push({ to: '/needs-review', kicker: 'Needs review', title: `${flagged} ${flagged === 1 ? 'entry needs' : 'entries need'} review`, sub: l.reviewFlags[0]?.note ?? 'Flagged by partners', amount: String(flagged), status: 'Review →', tone: 'warn' })
+  const openIssues = l.openIssues.length
   if (openIssues) out.push({ to: '/issues', kicker: 'Reported issues', title: 'Reported issues', sub: 'From partners', amount: String(openIssues), status: 'Open' })
   if (app.draftList.length) out.push({ to: '/drafts', kicker: 'Drafts', title: 'Unfinished drafts', sub: 'In this browser only', amount: String(app.draftList.length) })
   const inbox = l.s.inbox_items.filter((i) => i.status === 'new').length
@@ -219,7 +221,8 @@ export function BooksPage() {
   const inbox = l.s.inbox_items.filter((i) => i.status === 'new').length
   const unmatched = l.s.statement_lines.filter((x) => x.status === 'unmatched').length
   const due = dueTemplates(l.s.entry_templates, l.today).length
-  const issues = (l.s.issue_reports ?? []).filter((r) => r.status === 'open').length
+  const issues = l.openIssues.length
+  const flagged = new Set(l.reviewFlags.map((r) => r.record_id)).size
   const groups: [string, [string, string, string, string?][]][] = [
     ['To do', [
       ['/review', 'check', 'Weekly review', 'Approve, match and file the week'],
@@ -227,6 +230,7 @@ export function BooksPage() {
       ['/statements', 'bank', 'Match card statements', unmatched ? `${unmatched} charges to match` : 'Upload a statement CSV'],
       ['/missing', 'receipt', 'Missing receipts', 'Charges with no photo or receipt'],
       ['/recurring', 'repeat', 'Recurring costs', due ? `${due} due now` : 'Insurance, utilities, dumpster'],
+      ['/needs-review', 'alert', 'Needs review', flagged ? `${flagged} to review` : 'Entries partners marked to double-check'],
       ['/issues', 'alert', 'Issues', issues ? `${issues} open` : 'Problems partners reported'],
     ]],
     ['Look up', [
