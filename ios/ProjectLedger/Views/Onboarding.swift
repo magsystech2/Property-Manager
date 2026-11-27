@@ -119,8 +119,9 @@ struct SignInView: View {
                             .frame(minHeight: 44)
                     }
                     .disabled(busy || email.isEmpty || password.count < 6)
-                    Button(creating ? "I already have an account" : "New here? Create an account") { creating.toggle() }
-                        .frame(minHeight: 44)
+                } footer: {
+                    // Accounts are created on the web app (where the invite is accepted), so the App Store app only signs in.
+                    Text("New partner? Accept your invite on the Project Ledger web app first, then sign in here with the same email and password.")
                 }
                 Section {
                     Button("Back") { app.phase = .welcome }.frame(minHeight: 44)

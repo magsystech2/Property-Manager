@@ -298,6 +298,28 @@ final class DemoBackend: LedgerBackend {
             }
         case .deleteTemplate(let id):
             snapshot.entryTemplates.removeAll { $0.id == id }; audit("entry_templates", id, "delete")
+        case .saveLoan(var l):
+            guard !l.lender.trimmingCharacters(in: .whitespaces).isEmpty else { throw LedgerError("Who lent the money?") }
+            guard l.principalCents > 0 else { throw LedgerError("Enter the amount borrowed.") }
+            if let i = snapshot.partnerLoans.firstIndex(where: { $0.id == l.id }) {
+                l.createdBy = snapshot.partnerLoans[i].createdBy; l.createdAt = snapshot.partnerLoans[i].createdAt; l.updatedAt = now()
+                snapshot.partnerLoans[i] = l; audit("partner_loans", l.id, "update")
+            } else {
+                l.createdBy = actingAs; l.createdAt = now(); l.updatedAt = now(); snapshot.partnerLoans.append(l); audit("partner_loans", l.id, "insert")
+            }
+        case .deleteLoan(let id):
+            snapshot.partnerLoans.removeAll { $0.id == id }; snapshot.partnerLoanPayments.removeAll { $0.loanId == id }
+            audit("partner_loans", id, "delete")
+        case .saveLoanPayment(var p):
+            guard p.amountCents > 0 else { throw LedgerError("Enter the amount paid.") }
+            if let i = snapshot.partnerLoanPayments.firstIndex(where: { $0.id == p.id }) {
+                p.createdBy = snapshot.partnerLoanPayments[i].createdBy; p.createdAt = snapshot.partnerLoanPayments[i].createdAt
+                snapshot.partnerLoanPayments[i] = p; audit("partner_loan_payments", p.id, "update")
+            } else {
+                p.createdBy = actingAs; p.createdAt = now(); snapshot.partnerLoanPayments.append(p); audit("partner_loan_payments", p.id, "insert")
+            }
+        case .deleteLoanPayment(let id):
+            snapshot.partnerLoanPayments.removeAll { $0.id == id }; audit("partner_loan_payments", id, "delete")
         case .addIssue(var r):
             guard !r.note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw LedgerError("Say what's wrong.") }
             guard !snapshot.issueReports.contains(where: { $0.id == r.id || (r.clientId != nil && $0.clientId == r.clientId) }) else { break }

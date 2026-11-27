@@ -48,6 +48,11 @@ enum PlanningOp {
     case addIssue(IssueReport)
     /// Resolve (with an optional note of what was done) or reopen.
     case setIssueStatus(id: UUID, resolved: Bool, resolution: String?)
+    // Borrowed money (migration 09). Reference only: can be edited and removed.
+    case saveLoan(PartnerLoan)
+    case deleteLoan(id: UUID)
+    case saveLoanPayment(PartnerLoanPayment)
+    case deleteLoanPayment(id: UUID)
 }
 
 /// Live (Supabase) or demo (in memory). Both must apply the same rules.

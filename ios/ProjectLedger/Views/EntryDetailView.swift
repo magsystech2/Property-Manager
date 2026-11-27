@@ -23,6 +23,7 @@ struct EntryDetailView: View {
                     .padding(.vertical, 6)
                     .accessibilityElement(children: .combine)
                 }
+                ReviewBanner(ref: ref)
 
                 details(entry)
                 actions(entry)
@@ -293,6 +294,20 @@ struct EntryDetailView: View {
             }
             if ref.kind == .commitment, !isVoid {
                 Button { app.sheet = .draw(commitmentId: ref.id, draw: nil) } label: { Label("Schedule a draw (cash plan)", systemImage: "calendar.badge.plus").frame(minHeight: 44) }
+            }
+            if (ref.kind == .expense || ref.kind == .bill) && !isVoid {
+                if let why = app.correctionBlocker(ref) {
+                    Label("Correct: \(why)", systemImage: "pencil.slash").font(.footnote).foregroundStyle(.secondary)
+                } else {
+                    Button { app.sheet = .correct(ref) } label: {
+                        Label("Correct amount, date, vendor or category…", systemImage: "pencil").frame(minHeight: 44)
+                    }
+                }
+            }
+            if app.ledger.reviewFlags(for: ref).isEmpty {
+                Button { app.sheet = .reviewFlag(ref) } label: {
+                    Label("Mark as needs review", systemImage: "exclamationmark.triangle").frame(minHeight: 44)
+                }
             }
             Button { app.sheet = .report(ref: ref, error: nil, page: "\(ref.kind.label) detail") } label: {
                 Label("Report an issue", systemImage: "exclamationmark.bubble").frame(minHeight: 44)
