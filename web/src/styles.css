@@ -494,3 +494,19 @@ td.editing .edit-input, span.editing .edit-input { width: 100%; min-width: 90px;
   .help-word .k { flex: none; }
   .help-go { align-self: stretch; }
 }
+
+/* Needs review: stands out while anything is flagged */
+.review-alert { display: flex; align-items: center; gap: 14px; padding: 14px 18px; border-radius: 12px; background: var(--tan); color: var(--tan-text);
+  border-left: 6px solid var(--warn); text-decoration: none; box-shadow: 0 1px 0 rgba(0,0,0,.04); }
+.review-alert:hover { text-decoration: none; filter: brightness(1.03); }
+.review-alert .ra-icon { display: grid; place-items: center; width: 38px; height: 38px; border-radius: 50%; background: var(--warn); color: var(--bg); flex: none; }
+.review-alert .ra-body { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.review-alert .ra-title { font-weight: 750; font-size: 17px; }
+.review-alert .ra-sub { font-size: 13px; opacity: .85; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.review-alert .ra-cta { font-weight: 700; white-space: nowrap; padding: 8px 14px; border-radius: 8px; background: var(--warn); color: var(--bg); }
+@media (max-width: 640px) { .review-alert .ra-cta { display: none; } }
+.sidebar .nav-link.nav-review { background: var(--tan); color: var(--tan-text); font-weight: 700; box-shadow: inset 4px 0 0 var(--warn); }
+.sidebar .nav-link.nav-review:hover { filter: brightness(1.05); background: var(--tan); }
+.sidebar .nav-link.nav-review .nav-count { background: var(--warn); color: var(--bg); animation: ra-pulse 2s ease-in-out infinite; }
+@keyframes ra-pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(233,180,106,.6); } 50% { box-shadow: 0 0 0 5px rgba(233,180,106,0); } }
+@media (prefers-reduced-motion: reduce) { .sidebar .nav-link.nav-review .nav-count { animation: none; } }

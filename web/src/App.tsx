@@ -155,7 +155,7 @@ function Shell() {
         <NavLink to="/partners" className="nav-link"><Icon name="users" />Partners</NavLink>
         <div className="nav-group">Finance</div>
         <NavLink to="/review" className="nav-link"><Icon name="check" />Weekly review</NavLink>
-        <NavLink to="/needs-review" className="nav-link"><Icon name="alert" />Needs review{count(reviewCount)}</NavLink>
+        <NavLink to="/needs-review" className={reviewCount ? 'nav-link nav-review' : 'nav-link'}><Icon name="alert" />Needs review{count(reviewCount)}</NavLink>
         <NavLink to="/inbox" className="nav-link"><Icon name="tray" />Receipt inbox{count(inboxCount)}</NavLink>
         <NavLink to="/statements" className="nav-link"><Icon name="bank" />Statements{count(unmatchedCount)}</NavLink>
         <NavLink to="/cash" className="nav-link"><Icon name="cash" />Cash plan</NavLink>
