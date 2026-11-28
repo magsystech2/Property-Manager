@@ -112,6 +112,7 @@ export function HomePage() {
   const plan = cashPlan(l)
   return (
     <div className="stack home">
+      <div className="home-band">
       <div className="page-title">
         <div style={{ flex: 1, minWidth: 0 }}>
           <h1>{greeting()}, {firstName(name)}</h1>
@@ -119,6 +120,7 @@ export function HomePage() {
         </div>
         <button className="btn" onClick={() => app.reload()} disabled={app.syncing} aria-label="Refresh"><Icon name="refresh" /></button>
         <Link className="btn primary" to="/review">Open weekly review ↗</Link>
+      </div>
       </div>
 
       <ReviewAlert />
