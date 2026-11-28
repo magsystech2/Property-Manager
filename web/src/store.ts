@@ -68,8 +68,8 @@ export class AppStore {
   modal: Modal | null = null
   drafts: DraftStore | null = null
   draftList: TransactionDraft[] = []
-  /** Partner whose numbers the Home and Projects pages show. null means the signed-in partner. */
-  viewPartner: string | null = null
+  /** Partners whose numbers Overview, Projects and Activity show: 'all', a list, or null for the signed-in partner. */
+  viewSel: 'all' | string[] | null = null
   private unsubscribe: (() => void) | null = null
   private reloadTimer: number | undefined
   private toastTimer: number | undefined
@@ -84,12 +84,25 @@ export class AppStore {
   get isDemo() { return this.backend?.isDemo ?? false }
   get me() { return this.backend?.userId() ?? null }
   get myMember() { return this.snapshot?.members.find((m) => m.user_id === this.me) }
-  /** The partner the partner-facing pages are filtered to: the chosen one if still a member, else me. */
-  get viewing() {
-    const v = this.viewPartner
-    return v && this.snapshot?.members.some((m) => m.user_id === v) ? v : this.me
+  /** Partners offered in the partner filter: everyone with access, plus anyone already picked. */
+  get viewChoices() { return (this.snapshot?.members ?? []).filter((m) => !m.access_revoked_at) }
+  /** The partners the partner filter currently covers (never empty: falls back to me). */
+  get viewingIds(): string[] {
+    const sel = this.viewSel
+    if (sel === 'all') return this.viewChoices.map((m) => m.user_id)
+    const ids = (sel ?? []).filter((id) => this.snapshot?.members.some((m) => m.user_id === id))
+    return ids.length ? ids : this.me ? [this.me] : []
   }
-  setViewPartner(id: string | null) { this.viewPartner = id && id !== this.me ? id : null; this.emit() }
+  /** True when every partner is picked. */
+  get viewingAll() {
+    if (this.viewSel === 'all') return true
+    const ids = new Set(this.viewingIds)
+    return this.viewChoices.length > 1 && this.viewChoices.every((m) => ids.has(m.user_id))
+  }
+  setView(sel: 'all' | string[] | null) {
+    this.viewSel = Array.isArray(sel) && sel.length === 1 && sel[0] === this.me ? null : sel
+    this.emit()
+  }
   get isOwner() { return this.myMember?.role === 'owner' }
   get workspace() { return this.snapshot?.workspace ?? null }
   get demo() { return this.backend instanceof DemoBackend ? this.backend : null }
@@ -198,7 +211,7 @@ export class AppStore {
     const b = this.backend
     if (!b) return
     AppConfig.lastWorkspace = id
-    this.viewPartner = null
+    this.viewSel = null
     this.drafts = new DraftStore(b.isDemo ? 'demo' : id)
     this.draftList = this.drafts.all()
     await this.reload()

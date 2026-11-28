@@ -201,19 +201,47 @@ export function PartnerSelect({ value, onChange, allowLLC, llcLabel = 'LLC accou
   )
 }
 
-/** Picks which partner's numbers a page shows. Starts on the signed-in partner. */
+/** Short label for the partners the filter covers: "Kiran", "Madhan + Kiran" or "All partners". */
+export function viewLabel(app: ReturnType<typeof useStore>, withMe = false) {
+  if (app.viewingAll) return 'All partners'
+  return app.viewingIds.map((id) => `${app.ledger.payerName(id)}${withMe && id === app.me ? ' (me)' : ''}`).join(' + ')
+}
+
+/** Picks which partners' numbers a page shows: one, several or all. Starts on the signed-in partner. */
 export function ViewPartnerSelect() {
   const app = useStore()
-  const value = app.viewing ?? ''
-  const members = app.ledger.s.members.filter((m) => !m.access_revoked_at || m.user_id === value)
+  const ref = useRef<HTMLDetailsElement>(null)
+  useEffect(() => {
+    const close = (e: MouseEvent) => { if (ref.current?.open && !ref.current.contains(e.target as Node)) ref.current.open = false }
+    document.addEventListener('click', close)
+    return () => document.removeEventListener('click', close)
+  }, [])
+  const members = app.viewChoices
   if (members.length < 2) return null
+  const picked = new Set(app.viewingIds)
+  const all = app.viewingAll
+  const toggle = (id: string) => {
+    const next = all ? members.map((m) => m.user_id).filter((x) => x !== id) : picked.has(id) ? [...picked].filter((x) => x !== id) : [...picked, id]
+    app.setView(next.length === members.length ? 'all' : next.length ? next : null)
+  }
   return (
-    <label className="view-partner">
+    <div className="view-partner">
       <span className="small muted">Partner</span>
-      <select className="compact-select" value={value} onChange={(e) => app.setViewPartner(e.target.value || null)} aria-label="Show numbers for partner">
-        {members.map((m) => <option key={m.user_id} value={m.user_id}>{m.display_name}{m.user_id === app.me ? ' (me)' : ''}</option>)}
-      </select>
-    </label>
+      <details ref={ref} className="multi-select">
+        <summary className="compact-select" aria-label="Show numbers for partners">{viewLabel(app, true)}</summary>
+        <div className="multi-menu" role="group">
+          <label className="multi-opt"><input type="checkbox" checked={all} onChange={() => app.setView(all ? null : 'all')} /><span className="bold">All partners</span></label>
+          <div className="multi-sep" />
+          {members.map((m) => (
+            <label key={m.user_id} className="multi-opt">
+              <input type="checkbox" checked={all || picked.has(m.user_id)} onChange={() => toggle(m.user_id)} />
+              <span>{m.display_name}{m.user_id === app.me ? ' (me)' : ''}</span>
+              <button type="button" className="btn link small only" onClick={(e) => { e.preventDefault(); app.setView([m.user_id]); if (ref.current) ref.current.open = false }}>only</button>
+            </label>
+          ))}
+        </div>
+      </details>
+    </div>
   )
 }
 
